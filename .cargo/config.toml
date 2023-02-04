@@ -12,7 +12,7 @@ rustflags = [
 ]
 
 # From xv6-riscv project Makefile.
-#runner = """
+#    """
 #    qemu-system-riscv64 \
 #    -machine virt -bios none \
 #    -m 1G -smp 2 -nographic \
