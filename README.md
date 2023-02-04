@@ -4,7 +4,7 @@
 - rustup add target riscv64gc-unkown-none-elf
 
 ## Usage
-make run
+`$ make run`
 
 
 ### Notes
