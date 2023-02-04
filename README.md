@@ -1,3 +1,13 @@
+## Setup
+- qemu for riscv
+- riscv-gnu-toolchain (and add to PATH)
+- rustup add target riscv64gc-unkown-none-elf
+
+## Usage
+make run
+
+
+### Notes
 compile the asm with risc*gcc -c to an elf object file
 
 compile the rust with cargo build using staticlib
