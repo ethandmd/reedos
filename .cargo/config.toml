@@ -6,17 +6,17 @@ build-std = ["core", "compiler_builtins"]
 target = "riscv64gc-unknown-none-elf"
 
 [target.riscv64gc-unknown-none-elf]
-linker = "/opt/riscv/bin/riscv64-unknown-elf-ld"
-rustflags = [
-    "-C", "linker-flavor=ld"
-]
+linker = "/opt/riscv/bin/riscv64-unknown-linux-gnu-gcc"
+#rustflags = [
+#    "-C", "link-arg=-Tkernel.ld"
+#]
 
 # From xv6-riscv project Makefile.
-runner = """
-    qemu-system-riscv64 \
-    -machine virt -bios none \
-    -m 1G -smp 2 -nographic \
-    -drive file=fs.img,if=none,format=raw,id=x0 \
-    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
-    -kernel
-    """
+#runner = """
+#    qemu-system-riscv64 \
+#    -machine virt -bios none \
+#    -m 1G -smp 2 -nographic \
+#    -drive file=fs.img,if=none,format=raw,id=x0 \
+#    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
+#    -kernel
+#    """
