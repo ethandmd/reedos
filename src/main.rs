@@ -11,7 +11,12 @@ fn panic(_info: &PanicInfo) -> ! {
 
 static HELLO: &[u8] = b"Hello World!";
 
-#[no_mangle]
+// Kernel entry point.
+// Zero out bss section. Init data section and get to
+// our entry point.
+
+#[link_section = ".init.rust"]
+#[export_name = "_start_rust"]
 pub extern "C" fn _start() -> ! {
     let vga_buffer = 0xb8000 as *mut u8;
 
