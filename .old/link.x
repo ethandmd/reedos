@@ -1,77 +1,181 @@
-/* 
- * This is a minimal linker script, designed to get us up and running
- * with some "mellow swirled!" action. (a.k.a. get us to the bootloader).
- *
- * Also, any byte alignment will be labeled in n := # of bytes, not hex.
- * e.g. ALIGN(4096), for 4k pages, if we want to be page aligned.
- *
- * References:
- *  riscv-...-ld linker script from gnu riscv toolchain.
- *  siFive linker script generator: https://github.com/sifive/ldscript-generator
- *  riscv-isa-manual: https://github.com/riscv/riscv-isa-manual
- *  rust-embedded riscv-rt: https://github.com/rust-embedded/riscv-rt/blob/master/link.x
- *  xv6-riscv: https://github.com/mit-pdos/xv6-riscv/blob/riscv/kernel/kernel.ld
- */
-
-OUTPUT_ARCH("riscv")
-/* Set the entry point symbol called '_start'. */
-ENTRY(_start)
-
-MEMORY
-{
-    ram (wxa) : ORIGIN = 0x80000000, LENGTH = 128M
-}
-
 /*
- * .text = executable sections
- * .rodata = global constants
- * .data = global initialized variables
- * .bss = global uninitialized variables
+ * This is linker script from rust-embedded/riscv-rt/link.x
+ * 
+ * Started out with simple xv6-riscv style linker,
+ * can be found in reedos/.old/link.x
  */
+
+PROVIDE(_stext = ORIGIN(REGION_TEXT));
+PROVIDE(_stack_start = ORIGIN(REGION_STACK) + LENGTH(REGION_STACK));
+PROVIDE(_max_hart_id = 0);
+PROVIDE(_hart_stack_size = 2K);
+PROVIDE(_heap_size = 0);
+
+PROVIDE(UserSoft = DefaultHandler);
+PROVIDE(SupervisorSoft = DefaultHandler);
+PROVIDE(MachineSoft = DefaultHandler);
+PROVIDE(UserTimer = DefaultHandler);
+PROVIDE(SupervisorTimer = DefaultHandler);
+PROVIDE(MachineTimer = DefaultHandler);
+PROVIDE(UserExternal = DefaultHandler);
+PROVIDE(SupervisorExternal = DefaultHandler);
+PROVIDE(MachineExternal = DefaultHandler);
+
+PROVIDE(DefaultHandler = DefaultInterruptHandler);
+PROVIDE(ExceptionHandler = DefaultExceptionHandler);
+
+/* # Pre-initialization function */
+/* If the user overrides this using the `#[pre_init]` attribute or by creating a `__pre_init` function,
+   then the function this points to will be called before the RAM is initialized. */
+PROVIDE(__pre_init = default_pre_init);
+
+/* A PAC/HAL defined routine that should initialize custom interrupt controller if needed. */
+PROVIDE(_setup_interrupts = default_setup_interrupts);
+
+/* # Multi-processing hook function
+   fn _mp_hook() -> bool;
+
+   This function is called from all the harts and must return true only for one hart,
+   which will perform memory initialization. For other harts it must return false
+   and implement wake-up in platform-dependent way (e.g. after waiting for a user interrupt).
+*/
+PROVIDE(_mp_hook = default_mp_hook);
+
+/* # Start trap function override
+  By default uses the riscv crates default trap handler
+  but by providing the `_start_trap` symbol external crates can override.
+*/
+PROVIDE(_start_trap = default_start_trap);
 
 SECTIONS
 {
-    /*
-     * This is where qemu's '-kernel' jumps to. Ensure _entry is at this address.
-     * The period '.' := current memory location.
-     * Check qemu memory map:
-     *     .../qemu/hw/riscv/virt.c
-     */
-    . = 0x80000000;
+  .text.dummy (NOLOAD) :
+  {
+    /* This section is intended to make _stext address work */
+    . = ABSOLUTE(_stext);
+  } > REGION_TEXT
 
-    .text : {
-        /*
-         * First part of RAM layout is .text (see above), so we need this section
-         * to line up our entry point with 0x80000000.
-         * 
-         * This lays out text sections first, so let's do ourselves a favor and add
-         * in a '.textstart' to make super sure it comes first in the layout.
-         */
-        *(.textstart)
-        *(.text .text.*)
-    }
+  .text _stext :
+  {
+    /* Put reset handler first in .text section so it ends up as the entry */
+    /* point of the program. */
+    KEEP(*(.init));
+    KEEP(*(.init.rust));
+    . = ALIGN(4);
+    *(.trap);
+    *(.trap.rust);
 
-    /* Just for relative positioning for below sections. */
-    PROVIDE(__global_pointer = .);
+    *(.text .text.*);
+  } > REGION_TEXT
 
-    /* Don't worry about srodata vs rodata. Let the compiler care. */
-    .rodata : {
-        *(.srodata .srodata.*)
-        *(.rodata .rodata.*)
-    }
+  .rodata : ALIGN(4)
+  {
+    *(.srodata .srodata.*);
+    *(.rodata .rodata.*);
 
-    .data : {
-        /* For data section, we probably want to align to our page size, 4Kb. */
-        . = ALIGN(4096)
-        *(.sdata .sdata.*)
-        *(.data .data.*)
-    }
+    /* 4-byte align the end (VMA) of this section.
+       This is required by LLD to ensure the LMA of the following .data
+       section will have the correct alignment. */
+    . = ALIGN(4);
+  } > REGION_RODATA
 
-    .bss : {
-        *(.sbss .sbss.*)
-        *(.bss .bss.*)
-    }
+  .data : ALIGN(4)
+  {
+    _sidata = LOADADDR(.data);
+    _sdata = .;
+    /* Must be called __global_pointer$ for linker relaxations to work. */
+    PROVIDE(__global_pointer$ = . + 0x800);
+    *(.sdata .sdata.* .sdata2 .sdata2.*);
+    *(.data .data.*);
+    . = ALIGN(4);
+    _edata = .;
+  } > REGION_DATA AT > REGION_RODATA
 
-    /* These will be useful symbols. */
-    PROVIDE(__stack_top = ORIGIN(ram) + LENGTH(ram));
+  .bss (NOLOAD) :
+  {
+    _sbss = .;
+    *(.sbss .sbss.* .bss .bss.*);
+    . = ALIGN(4);
+    _ebss = .;
+  } > REGION_BSS
+
+  /* fictitious region that represents the memory available for the heap */
+  .heap (NOLOAD) :
+  {
+    _sheap = .;
+    . += _heap_size;
+    . = ALIGN(4);
+    _eheap = .;
+  } > REGION_HEAP
+
+  /* fictitious region that represents the memory available for the stack */
+  .stack (NOLOAD) :
+  {
+    _estack = .;
+    . = ABSOLUTE(_stack_start);
+    _sstack = .;
+  } > REGION_STACK
+
+  /* fake output .got section */
+  /* Dynamic relocations are unsupported. This section is only used to detect
+     relocatable code in the input files and raise an error if relocatable code
+     is found */
+  .got (INFO) :
+  {
+    KEEP(*(.got .got.*));
+  }
+
+  .eh_frame (INFO) : { KEEP(*(.eh_frame)) }
+  .eh_frame_hdr (INFO) : { *(.eh_frame_hdr) }
 }
+
+/* Do not exceed this mark in the error messages above                                    | */
+ASSERT(ORIGIN(REGION_TEXT) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_TEXT must be 4-byte aligned");
+
+ASSERT(ORIGIN(REGION_RODATA) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_RODATA must be 4-byte aligned");
+
+ASSERT(ORIGIN(REGION_DATA) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_DATA must be 4-byte aligned");
+
+ASSERT(ORIGIN(REGION_HEAP) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_HEAP must be 4-byte aligned");
+
+ASSERT(ORIGIN(REGION_TEXT) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_TEXT must be 4-byte aligned");
+
+ASSERT(ORIGIN(REGION_STACK) % 4 == 0, "
+ERROR(riscv-rt): the start of the REGION_STACK must be 4-byte aligned");
+
+ASSERT(_stext % 4 == 0, "
+ERROR(riscv-rt): `_stext` must be 4-byte aligned");
+
+ASSERT(_sdata % 4 == 0 && _edata % 4 == 0, "
+BUG(riscv-rt): .data is not 4-byte aligned");
+
+ASSERT(_sidata % 4 == 0, "
+BUG(riscv-rt): the LMA of .data is not 4-byte aligned");
+
+ASSERT(_sbss % 4 == 0 && _ebss % 4 == 0, "
+BUG(riscv-rt): .bss is not 4-byte aligned");
+
+ASSERT(_sheap % 4 == 0, "
+BUG(riscv-rt): start of .heap is not 4-byte aligned");
+
+ASSERT(_stext + SIZEOF(.text) < ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT), "
+ERROR(riscv-rt): The .text section must be placed inside the REGION_TEXT region.
+Set _stext to an address smaller than 'ORIGIN(REGION_TEXT) + LENGTH(REGION_TEXT)'");
+
+ASSERT(SIZEOF(.stack) > (_max_hart_id + 1) * _hart_stack_size, "
+ERROR(riscv-rt): .stack section is too small for allocating stacks for all the harts.
+Consider changing `_max_hart_id` or `_hart_stack_size`.");
+
+ASSERT(SIZEOF(.got) == 0, "
+.got section detected in the input files. Dynamic relocations are not
+supported. If you are linking to C code compiled using the `gcc` crate
+then modify your build script to compile the C code _without_ the
+-fPIC flag. See the documentation of the `gcc::Config.fpic` method for
+details.");
+
+/* Do not exceed this mark in the error messages above                                    | */
