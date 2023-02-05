@@ -4,7 +4,34 @@
 - rustup add target riscv64gc-unkown-none-elf
 
 ## Usage
-`$ make run`
+`$ make run # "Ctrl-a" + "x" to quit qemu`
+
+On this branch, expect to see:
+```
+$ make run
+cargo build
+warning: file `/home/ethan/Documents/reed/y3s2/393/reedos/src/main.rs` found to be present in multiple build targets:
+  * `lib` target `reedos`
+  * `bin` target `reedos`
+   Compiling reedos v0.1.0 (/home/ethan/Documents/reed/y3s2/393/reedos)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.26s
+riscv64-unknown-elf-ld -Tkernel.ld target/riscv64gc-unknown-none-elf/debug/libreedos.a -o reedos.ELF
+echo "Ctrl-a x to quit qemu"
+Ctrl-a x to quit qemu
+qemu-system-riscv64 \
+	-machine virt \
+	-m 2G \
+	-bios none \
+	-nographic \
+	-kernel reedos.ELF
+[INFO]: Currently on hartid: 0
+[INFO]: main fn's addr?: 0x8000018a
+MELLOW SWIRLED!
+ from,
+ your fav main fn
+(called from _start fn!)
+QEMU: Terminated
+```
 
 
 ### Notes
