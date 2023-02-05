@@ -93,6 +93,7 @@ pub extern "C" fn _start() {
     riscv::write_tp(hartid);
 
     // Now return to sup mode and jump to main().
+    println!("[INFO]: Jumping to main fn (and sup mode)");
     riscv::call_mret();
 
 }
@@ -102,6 +103,7 @@ fn main() -> ! {
     // Init uart driver.
     let mut uartd = uart::Uart::new(0x1000_0000);
     uartd.init();
+    println!("[INFO]: Entered main()");
     // Seasons greetings.
     println!("MELLOW SWIRLED!\n from,\n your fav main fn");
     println!("(called from _start fn!)");
