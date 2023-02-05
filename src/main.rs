@@ -82,7 +82,7 @@ pub extern "C" fn _start() {
 
     // Now give sup mode access to (all??) of phys mem.
     // Check 3.1.6 of line 66 link.
-    riscv::write_pmpaddr0(0x3fffffffffffff as u64); // Prayers that ULL == u64
+    riscv::write_pmpaddr0(0x3fffffffffffff_u64); // Prayers that ULL == u64
     riscv::write_pmpcfg0(0xf);
 
     // Get interrupts from clock, handled by timerinit().
