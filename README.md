@@ -25,7 +25,9 @@ qemu-system-riscv64 \
 	-nographic \
 	-kernel reedos.ELF
 [INFO]: Currently on hartid: 0
-[INFO]: main fn's addr?: 0x8000018a
+[INFO]: main fn's addr?: 0x800001c4
+[INFO]: Jumping to main fn (and sup mode)
+[INFO]: Entered main()
 MELLOW SWIRLED!
  from,
  your fav main fn
