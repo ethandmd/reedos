@@ -7,6 +7,8 @@ pub mod uart;
 pub mod entry;
 pub mod riscv;
 
+const NHART: usize = 2;
+
 #[macro_export]
 macro_rules! print
 {
@@ -36,13 +38,40 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
+// a scratch area per CPU for machine-mode timer interrupts.
+// uint64 timer_scratch[NCPU][5];
+static mut TIMER_SCRATCH: [[u8; 5]; NHART] = [[0;5]; NHART];
+
 // Have to get the timer interrupts that arrive in mach mode
 // and convert to s/w interrupts for trap.
 fn timerinit() {
-//    let hartid = riscv::read_mhartid();
-//    let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
-//    let mtcmp = riscv::clint_mtimecmp(hartid);
-    // TODO
+    let hartid = riscv::read_mhartid();
+    let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
+    riscv::write_clint(hartid, interval);
+
+    // prepare information in scratch[] for timervec.
+    // scratch[0..2] : space for timervec to save registers.
+    // scratch[3] : address of CLINT MTIMECMP register.
+    // scratch[4] : desired interval (in cycles) between timer interrupts.
+    // uint64 *scratch = &timer_scratch[id][0];
+    // scratch[3] = CLINT_MTIMECMP(id);
+    // scratch[4] = interval;
+    let scratch_addr;
+    unsafe {
+        scratch_addr = TIMER_SCRATCH.as_mut_ptr();
+    }
+    println!("[INFO]: Scratch_addr: {:?}",scratch_addr);
+    riscv::write_mscratch(scratch_addr as u64);
+
+    // set the machine-mode trap handler.
+    // write_mtvec((uint64)timervec);
+
+    // enable machine-mode interrupts.
+    // write_mstatus(r_mstatus() | MSTATUS_MIE);
+
+    // enable machine-mode timer interrupts.
+    // write_mie(r_mie() | MIE_MTIE);
+
 }
 
 // Referenced from xv6-riscv/kernel/start.c:
@@ -74,6 +103,8 @@ pub extern "C" fn _start() {
 
     // Allow our kernel to handle interrupts from sup mode
     // by "delegating" interrupts and exceptions.
+    // medeleg => synchronous interrupt
+    // mideleg => asynchronous interrupt
     riscv::write_medeleg(0xffff); // Check 3.1.8 in: (haven't read it in full yet)
     riscv::write_mideleg(0xffff); // https://five-embeddev.com/riscv-isa-manual/latest/machine.html#machine
     riscv::write_sie(

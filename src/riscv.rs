@@ -27,15 +27,28 @@ pub const SIE_STIE: u64 = 1 << 5; // timer
 pub const SIE_SSIE: u64 = 1 << 1; // software
 
 // CLINT := Core local interruptor (where the timer is).
-pub const CLINT: u64 = 0x2000000; // clint is at this location in memlayout.
+pub const CLINT_BASE: u64 = 0x2000000; // clint is at this location in memlayout.
 // #define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8*(hartid))
-pub fn clint_mtimecmp(id: u64) -> u64 {
-    CLINT + 0x4000 + 8 * id
-}
 // #define  CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
-pub fn clint_mtime() -> u64 {
-    CLINT + 0xBFF8
+// int interval = 1000000; // cycles; about 1/10th second in qemu.
+// *(uint64*)CLINT_MTIMECMP(id) = *(uint64*)CLINT_MTIME + interval;
+
+// Need to write a value to the CLINT memory location.
+// This is mmio, as such there are safety concerns:
+//      https://doc.rust-lang.org/std/ptr/fn.write_volatile.html
+// 
+// First we get ptr to CLINT and then we write base + offset
+// to represent cycles since boot. Since mtimecmp specifies a future
+// time, and if mtime register is >= to mtimecmp, it generates a 
+// machine level interrupt which is what we want!
+pub fn write_clint(hartid: u64, interval: u64) {
+    // Ok, treat base addr as a pointer we can write to.
+    let base = (CLINT_BASE + 0x4000 + 8 * (hartid)) as *mut u64;
+    unsafe {
+        base.write_volatile(CLINT_BASE + 0xBFF8 + interval);
+    }
 }
+
 
 
 // Return id of current hart.
@@ -217,7 +230,14 @@ pub fn call_mret() {
     }
 }
 
+pub fn write_mscratch(scratch: u64) {
+    //TODO
+}
 
+// Give address of timervec address.
+pub fn write_mtvec(addr: *const ()) {
+    //TODO
+}
 
 
 
