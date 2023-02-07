@@ -3,13 +3,14 @@
 
 use core::panic::PanicInfo;
 
-pub mod uart;
 pub mod entry;
-pub mod riscv;
-pub mod param;
-pub mod timervec;
 #[macro_use]
 pub mod log;
+pub mod param;
+pub mod riscv;
+pub mod spinlock;
+pub mod timervec;
+pub mod uart;
 
 use riscv::*;
 use log::*;
