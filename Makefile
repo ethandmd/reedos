@@ -14,6 +14,7 @@ run: build
 	echo "Ctrl-a x to quit qemu"
 	qemu-system-riscv64 \
 		-machine virt \
+		-smp 2 \
 		-m 2G \
 		-bios none \
 		-nographic \
