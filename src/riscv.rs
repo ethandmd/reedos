@@ -28,6 +28,7 @@ pub const SIE_SSIE: u64 = 1 << 1; // software
 
 // CLINT := Core local interruptor (where the timer is).
 pub const CLINT_BASE: u64 = 0x2000000; // clint is at this location in memlayout.
+// xv6-riscv C code:
 // #define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8*(hartid))
 // #define  CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
 // int interval = 1000000; // cycles; about 1/10th second in qemu.
@@ -231,12 +232,16 @@ pub fn call_mret() {
 }
 
 pub fn write_mscratch(scratch: u64) {
-    //TODO
+    unsafe {
+        asm!("csrw mscratch, {}", in(reg) scratch);
+    }
 }
 
 // Give address of timervec address.
 pub fn write_mtvec(addr: *const ()) {
-    //TODO
+    unsafe {
+        asm!("csrw mtvec, {}", in(reg) addr);
+    }
 }
 
 

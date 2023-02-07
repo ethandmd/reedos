@@ -38,9 +38,11 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
+
+
 // a scratch area per CPU for machine-mode timer interrupts.
 // uint64 timer_scratch[NCPU][5];
-static mut TIMER_SCRATCH: [[u8; 5]; NHART] = [[0;5]; NHART];
+static mut TIMER_SCRATCH: [[u64; 5]; NHART] = [[0;5]; NHART];
 
 // Have to get the timer interrupts that arrive in mach mode
 // and convert to s/w interrupts for trap.
@@ -48,14 +50,16 @@ fn timerinit() {
     let hartid = riscv::read_mhartid();
     let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
     riscv::write_clint(hartid, interval);
-
-    // prepare information in scratch[] for timervec.
-    // scratch[0..2] : space for timervec to save registers.
-    // scratch[3] : address of CLINT MTIMECMP register.
-    // scratch[4] : desired interval (in cycles) between timer interrupts.
+    
     // uint64 *scratch = &timer_scratch[id][0];
-    // scratch[3] = CLINT_MTIMECMP(id);
-    // scratch[4] = interval;
+    unsafe {
+        // TIMER_SCRATCH[id][0..2] : let timervec function save registers here.
+        // CLINT_MTIMECMP register address for mmio
+        TIMER_SCRATCH[hartid as usize][3] = riscv::CLINT_BASE + 0x4000 + 8*(hartid);
+        // Interval length in cycles
+        TIMER_SCRATCH[hartid as usize][4] = interval;
+    }
+
     let scratch_addr;
     unsafe {
         scratch_addr = TIMER_SCRATCH.as_mut_ptr();
