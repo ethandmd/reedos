@@ -23,36 +23,52 @@ macro_rules! println
     });
 }
 
-pub enum Log_Severity {
+pub enum LogSeverity {
     Debug,
     Info,
     Warning,
     Error
 }
 
+
+// use as `log::log!(Warning, "This is a test of the warning logging!");`
+// in a while that has
+// ```
+// #[macro_use]
+// pub mod log;
+// ```
+// at the top
+
 macro_rules! log
 {
-    (sev: Log_Severity, $fmt:expr) => ({
-	let _sev_str = match sev {
-	    Debug => "[DEBUG] ",
-	    Info => "[INFO]",
-	    Warning => "[WARN]",
-	    Error => "[ERROR]"
-	};
-	
-	print!(concat!(_sev_str, $fmt, "\r\n"))
+    (Debug, $fmt:expr) => ({
+	print!(concat!("[DEBUG] ", $fmt, "\r\n"))
     });
-    (sev: Log_Severity, $fmt:expr, $($args:tt)+) => ({
-	let _sev_str = match sev {
-	    Debug => "[DEBUG] ",
-	    Info => "[INFO]",
-	    Warning => "[WARN]",
-	    Error => "[ERROR]"
-	};
-
-	
-	print!(concat!(_sev_str, $fmt, "\r\n"), $($args)+)
-    })
+    (Info, $fmt:expr) => ({
+	print!(concat!("[INFO] ", $fmt, "\r\n"))
+    });
+    (Warning, $fmt:expr) => ({
+	print!(concat!("[WARN] ", $fmt, "\r\n"))
+    });
+    (Error, $fmt:expr) => ({
+	print!(concat!("[ERROR] ", $fmt, "\r\n"))
+    });
+    
+    (Debug, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[DEBUG]", $fmt, "\r\n"), $($args)+)
+    });
+    (Info, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[INFO]", $fmt, "\r\n"), $($args)+)
+    });
+    (Warning, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[WARN]", $fmt, "\r\n"), $($args)+)
+    });
+    (Error, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
+    });
 }
 
 
+pub(crate) use print;
+pub(crate) use println;
+pub(crate) use log;
