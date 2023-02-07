@@ -8,8 +8,8 @@ global_asm!(r#"
     .extern _start
     _entry:
         # Bootstrap on hartid 0
-        csrr t0, mhartid
-        bne t0, x0, spin
+        # csrr t0, mhartid
+        # bne t0, x0, spin
     
     # Riscv relax, look it up. No good for gp addr.
     .option push
@@ -36,6 +36,6 @@ global_asm!(r#"
         # Jump to _start in src/main.rs
         call _start
     spin:
-        wfi
+        # wfi
         j spin
 "#);
