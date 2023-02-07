@@ -1,0 +1,74 @@
+/*
+ * module for logging generally
+ */
+
+macro_rules! print
+{
+    ($($args:tt)+) => ({
+        use core::fmt::Write;
+        let _ = write!(uart::Uart::new(0x1000_0000), $($args)+);
+    });
+}
+
+macro_rules! println
+{
+    () => ({
+        print!("\r\n")
+    });
+    ($fmt:expr) => ({
+        print!(concat!($fmt, "\r\n"))
+    });
+    ($fmt:expr, $($args:tt)+) => ({
+        print!(concat!($fmt, "\r\n"), $($args)+)
+    });
+}
+
+pub enum LogSeverity {
+    Debug,
+    Info,
+    Warning,
+    Error
+}
+
+
+// use as `log::log!(Warning, "This is a test of the warning logging!");`
+// in a while that has
+// ```
+// #[macro_use]
+// pub mod log;
+// ```
+// at the top
+
+macro_rules! log
+{
+    (Debug, $fmt:expr) => ({
+	print!(concat!("[DEBUG] ", $fmt, "\r\n"))
+    });
+    (Info, $fmt:expr) => ({
+	print!(concat!("[INFO] ", $fmt, "\r\n"))
+    });
+    (Warning, $fmt:expr) => ({
+	print!(concat!("[WARN] ", $fmt, "\r\n"))
+    });
+    (Error, $fmt:expr) => ({
+	print!(concat!("[ERROR] ", $fmt, "\r\n"))
+    });
+    
+    (Debug, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[DEBUG]", $fmt, "\r\n"), $($args)+)
+    });
+    (Info, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[INFO]", $fmt, "\r\n"), $($args)+)
+    });
+    (Warning, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[WARN]", $fmt, "\r\n"), $($args)+)
+    });
+    (Error, $fmt:expr, $($args:tt)+) => ({
+	print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
+    });
+}
+
+
+pub(crate) use print;
+pub(crate) use println;
+pub(crate) use log;
