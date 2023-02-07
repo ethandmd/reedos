@@ -8,11 +8,11 @@ pub mod entry;
 pub mod riscv;
 pub mod param;
 pub mod timervec;
-
-use riscv::*;
-
 #[macro_use]
 pub mod log;
+
+use riscv::*;
+use log::*;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -32,8 +32,7 @@ fn timerinit() {
 
     // Set the machine trap vector to hold fn ptr to timervec:
     // https://stackoverflow.com/questions/50717928/what-is-the-difference-between-mscratch-and-mtvec-registers
-    let timervec_fn = timervec::timervec as *const ();
-    println!("timervec_fn: {:?}", timervec_fn);
+    let timervec_fn = timervec::timervec as *const (); 
     write_mtvec(timervec_fn);
     
     // Enable machine mode interrupts with mstatus reg.
@@ -53,7 +52,7 @@ pub extern "C" fn _start() {
 
     let mut uartd = uart::Uart::new(0x1000_0000);
     uartd.init();
-    println!("[INFO]: Currently on hartid: {}", read_mhartid());
+    log!(Info, "Currently on hartid: {}", read_mhartid());
    
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
@@ -65,7 +64,6 @@ pub extern "C" fn _start() {
 
     // Set machine exception prog counter to 
     // our main function for later mret call.
-    println!("[INFO]: main fn's addr?: {:?}", fn_main);
     write_mepc(fn_main);
 
     // Disable paging while setting up.
@@ -104,13 +102,10 @@ fn main() -> ! {
     // Init uart driver.
     let mut uartd = uart::Uart::new(0x1000_0000);
     uartd.init();
-    println!("[INFO]: Entered main()");
-    // Seasons greetings.
-    println!("MELLOW SWIRLED!\n from,\n your fav main fn");
-    println!("(called from _start fn!)");
+    log!(Info, "Entered main()");
 
-    log::println!("MELLOW SWIRLED!");
-    log::log!(Warning, "This is a test of the warning logging!");
-    log::log!(Error, "This is a test of the error logging!");
+    println!("MELLOW SWIRLED!");
+    log!(Warning, "This is a test of the warning logging!");
+    log!(Error, "This is a test of the error logging!");
     loop {}
 }
