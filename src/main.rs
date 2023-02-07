@@ -6,8 +6,10 @@ use core::panic::PanicInfo;
 pub mod uart;
 pub mod entry;
 pub mod riscv;
+pub mod param;
+pub mod timervec;
 
-const NHART: usize = 2;
+use riscv::*;
 
 #[macro_export]
 macro_rules! print
@@ -38,43 +40,27 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-
-
-// a scratch area per CPU for machine-mode timer interrupts.
-// uint64 timer_scratch[NCPU][5];
-static mut TIMER_SCRATCH: [[u64; 5]; NHART] = [[0;5]; NHART];
-
 // Have to get the timer interrupts that arrive in mach mode
 // and convert to s/w interrupts for trap.
 fn timerinit() {
-    let hartid = riscv::read_mhartid();
+    let hartid = read_mhartid();
     let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
-    riscv::write_clint(hartid, interval);
+    write_clint(hartid, interval);
     
-    // uint64 *scratch = &timer_scratch[id][0];
-    unsafe {
-        // TIMER_SCRATCH[id][0..2] : let timervec function save registers here.
-        // CLINT_MTIMECMP register address for mmio
-        TIMER_SCRATCH[hartid as usize][3] = riscv::CLINT_BASE + 0x4000 + 8*(hartid);
-        // Interval length in cycles
-        TIMER_SCRATCH[hartid as usize][4] = interval;
-    }
+    let mut clint = timervec::Clint::new(CLINT_BASE);
+    clint.init(hartid as usize, interval);
 
-    let scratch_addr;
-    unsafe {
-        scratch_addr = TIMER_SCRATCH.as_mut_ptr();
-    }
-    println!("[INFO]: Scratch_addr: {:?}",scratch_addr);
-    riscv::write_mscratch(scratch_addr as u64);
+    // Set the machine trap vector to hold fn ptr to timervec:
+    // https://stackoverflow.com/questions/50717928/what-is-the-difference-between-mscratch-and-mtvec-registers
+    let timervec_fn = timervec::timervec as *const ();
+    println!("timervec_fn: {:?}", timervec_fn);
+    write_mtvec(timervec_fn);
+    
+    // Enable machine mode interrupts with mstatus reg.
+    write_mstatus(read_mstatus() | MSTATUS_MIE);
 
-    // set the machine-mode trap handler.
-    // write_mtvec((uint64)timervec);
-
-    // enable machine-mode interrupts.
-    // write_mstatus(r_mstatus() | MSTATUS_MIE);
-
-    // enable machine-mode timer interrupts.
-    // write_mie(r_mie() | MIE_MTIE);
+    // Enable machine-mode timer interrupts.
+    write_mie(read_mie() | MIE_MTIE);
 
 }
 
@@ -87,49 +73,49 @@ pub extern "C" fn _start() {
 
     let mut uartd = uart::Uart::new(0x1000_0000);
     uartd.init();
-    println!("[INFO]: Currently on hartid: {}", riscv::read_mhartid());
+    println!("[INFO]: Currently on hartid: {}", read_mhartid());
    
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
     // For sstatus we can write SPP reg, bit 8.
-    let mut ms = riscv::read_mstatus();
-    ms &= !riscv::MSTATUS_MPP_MASK;
-    ms |= riscv::MSTATUS_MPP_S; 
-    riscv::write_mstatus(ms);
+    let mut ms = read_mstatus();
+    ms &= !MSTATUS_MPP_MASK;
+    ms |= MSTATUS_MPP_S; 
+    write_mstatus(ms);
 
     // Set machine exception prog counter to 
     // our main function for later mret call.
     println!("[INFO]: main fn's addr?: {:?}", fn_main);
-    riscv::write_mepc(fn_main);
+    write_mepc(fn_main);
 
     // Disable paging while setting up.
-    riscv::write_satp(0);
+    write_satp(0);
 
     // Allow our kernel to handle interrupts from sup mode
     // by "delegating" interrupts and exceptions.
     // medeleg => synchronous interrupt
     // mideleg => asynchronous interrupt
-    riscv::write_medeleg(0xffff); // Check 3.1.8 in: (haven't read it in full yet)
-    riscv::write_mideleg(0xffff); // https://five-embeddev.com/riscv-isa-manual/latest/machine.html#machine
-    riscv::write_sie(
-        riscv::read_sie() | riscv::SIE_SEIE | riscv::SIE_STIE | riscv::SIE_SSIE
+    write_medeleg(0xffff); // Check 3.1.8 in: (haven't read it in full yet)
+    write_mideleg(0xffff); // https://five-embeddev.com/riscv-isa-manual/latest/machine.html#machine
+    write_sie(
+        read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE
     );
 
     // Now give sup mode access to (all??) of phys mem.
     // Check 3.1.6 of line 66 link.
-    riscv::write_pmpaddr0(0x3fffffffffffff_u64); // Prayers that ULL == u64
-    riscv::write_pmpcfg0(0xf);
+    write_pmpaddr0(0x3fffffffffffff_u64); // Prayers that ULL == u64
+    write_pmpcfg0(0xf);
 
     // Get interrupts from clock, handled by timerinit().
     timerinit();
 
     // Store each hart's hartid in its tp reg for identification.
-    let hartid = riscv::read_mhartid();
-    riscv::write_tp(hartid);
+    let hartid = read_mhartid();
+    write_tp(hartid);
 
     // Now return to sup mode and jump to main().
     println!("[INFO]: Jumping to main fn (and sup mode)");
-    riscv::call_mret();
+    call_mret();
 
 }
 
