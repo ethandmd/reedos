@@ -1,7 +1,7 @@
 //! Setup for s/w timer interrupts.
-use core::arch::global_asm;
 use crate::param;
 use crate::riscv;
+use core::arch::global_asm;
 
 // Core Local Interrupt Timer driver and functions.
 // Use memory mapped I/O on CLINT base address to program
@@ -14,17 +14,14 @@ pub struct Clint {
 impl Clint {
     // Register new clint and setup scratch memory.
     pub fn new(base: usize) -> Self {
-        let scratchpad = [[0;5]; param::NHART];
-        Clint {
-            base,
-            scratchpad,
-        }
+        let scratchpad = [[0; 5]; param::NHART];
+        Clint { base, scratchpad }
     }
     
     // Initialize clint with appropriate addresses and interrupt interval in cycles.
     pub fn init(&mut self, hartid: usize, interval: u64) {
         // scratchpad[0..2] : timervec uses this area to save register values.
-        self.scratchpad[hartid][3] = self.base + 0x4000 + 8*hartid;
+        self.scratchpad[hartid][3] = self.base + 0x4000 + 8 * hartid;
         self.scratchpad[hartid][4] = interval as usize;
         
         let scratchpad_addr = self.scratchpad.as_mut_ptr() as usize;
@@ -49,7 +46,8 @@ impl Clint {
 // after this function returns with mret.
 //
 // 4. Restore regs.
-global_asm!(r#"
+global_asm!(
+    r#"
     .globl timervec
     .align 4
 timervec:
@@ -77,7 +75,8 @@ timervec:
     csrrw a0, mscratch, a0
 
     mret
-"#);
+    "#
+);
 
 //#[no_mangle]
 pub unsafe extern "C" fn timervec() {}

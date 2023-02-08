@@ -57,7 +57,9 @@ impl Uart {
     }
 
     pub const fn new() -> Mutex<Self> {
-        Mutex::new( Uart { base_address: UART_BASE })
+        Mutex::new(Uart { 
+                base_address: UART_BASE 
+            })
     }
 
     pub fn put(&mut self, c: u8) {
@@ -73,8 +75,7 @@ impl Uart {
             if ptr.add(5).read_volatile() & 1 == 0 {
                 // The DR bit is 0, meaning no data
                 None
-            }
-            else {
+            } else {
                 // The DR bit is 1, meaning data!
                 Some(ptr.add(0).read_volatile())
             }

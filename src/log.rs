@@ -26,7 +26,7 @@ pub enum LogSeverity {
     Debug,
     Info,
     Warning,
-    Error
+    Error,
 }
 
 
@@ -67,7 +67,6 @@ macro_rules! log
     });
 }
 
-
+pub(crate) use log;
 pub(crate) use print;
 pub(crate) use println;
-pub(crate) use log;

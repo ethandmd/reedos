@@ -12,9 +12,8 @@ pub mod riscv;
 pub mod spinlock;
 pub mod timervec;
 pub mod uart;
-
-use riscv::*;
 use log::*;
+use riscv::*;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -82,9 +81,7 @@ pub extern "C" fn _start() {
     // mideleg => asynchronous interrupt
     write_medeleg(0xffff); // Check 3.1.8 in: (haven't read it in full yet)
     write_mideleg(0xffff); // https://five-embeddev.com/riscv-isa-manual/latest/machine.html#machine
-    write_sie(
-        read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE
-    );
+    write_sie(read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
     // Now give sup mode access to (all??) of phys mem.
     // Check 3.1.6 of line 66 link.
@@ -112,9 +109,10 @@ fn main() -> ! {
     let id = riscv::read_tp();
     if id == 0 {
         uart::Uart::init();
-        println!("{}",param::BANNER);
+        println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-    } else {}
+    } else {
+    }
 
     loop {}
 }

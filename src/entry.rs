@@ -15,7 +15,8 @@
 // https://dev-doc.rust-lang.org/beta/unstable-book/library-features/global-asm.html
 use core::arch::global_asm;
 
-global_asm!(r#"
+global_asm!(
+    r#"
     .section .text
     .global _entry
     .extern _start
@@ -47,4 +48,5 @@ global_asm!(r#"
     spin:
         # wfi
         j spin
-"#);
+    "#
+);
