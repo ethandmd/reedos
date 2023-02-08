@@ -36,7 +36,7 @@ pub struct Mutex<T> {
     inner: UnsafeCell<T>, 
 }
 
-//unsafe impl<T: Send> Sync for Mutex<T> {}
+unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
     // https://doc.rust-lang.org/reference/const_eval.html

@@ -51,7 +51,9 @@ fn timerinit() {
 #[no_mangle]
 pub extern "C" fn _start() {
     let fn_main = main as *const ();
-   
+    uart::Uart::init();
+    let id = riscv::read_mhartid();
+    log!(Info, "MELLOW SWIRLED from hart {}", id);
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
     // For sstatus we can write SPP reg, bit 8.
@@ -96,12 +98,7 @@ pub extern "C" fn _start() {
 
 // Doesn't need to be extern C, no_mangle, nothin' fancy...?
 fn main() -> ! {
-    // Init uart driver.
-    //let mut uart = uart::Uart::new(param::UART_BASE);
-    uart::Uart::init();
-    log!(Info, "Entered main()");
-
-    println!("MELLOW SWIRLED!");
+    log!(Info, "This is a test of the info logging!");
     log!(Warning, "This is a test of the warning logging!");
     log!(Error, "This is a test of the error logging!");
     loop {}
