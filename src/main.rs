@@ -24,11 +24,12 @@ fn panic(_info: &PanicInfo) -> ! {
 // Have to get the timer interrupts that arrive in mach mode
 // and convert to s/w interrupts for trap.
 fn timerinit() {
+    let clint = param::CLINT_BASE;
     let hartid = read_mhartid();
     let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
-    write_clint(hartid, interval);
+    write_clint(hartid, clint, interval);
     
-    let mut clint = timervec::Clint::new(CLINT_BASE);
+    let mut clint = timervec::Clint::new(clint);
     clint.init(hartid as usize, interval);
 
     // Set the machine trap vector to hold fn ptr to timervec:
@@ -50,10 +51,6 @@ fn timerinit() {
 #[no_mangle]
 pub extern "C" fn _start() {
     let fn_main = main as *const ();
-
-    let mut uartd = uart::Uart::new(0x1000_0000);
-    uartd.init();
-    log!(Info, "Currently on hartid: {}", read_mhartid());
    
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
@@ -93,7 +90,6 @@ pub extern "C" fn _start() {
     write_tp(hartid);
 
     // Now return to sup mode and jump to main().
-    println!("[INFO]: Jumping to main fn (and sup mode)");
     call_mret();
 
 }
@@ -101,8 +97,8 @@ pub extern "C" fn _start() {
 // Doesn't need to be extern C, no_mangle, nothin' fancy...?
 fn main() -> ! {
     // Init uart driver.
-    let mut uartd = uart::Uart::new(0x1000_0000);
-    uartd.init();
+    //let mut uart = uart::Uart::new(param::UART_BASE);
+    uart::Uart::init();
     log!(Info, "Entered main()");
 
     println!("MELLOW SWIRLED!");

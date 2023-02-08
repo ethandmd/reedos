@@ -27,7 +27,7 @@ pub const SIE_STIE: u64 = 1 << 5; // timer
 pub const SIE_SSIE: u64 = 1 << 1; // software
 
 // CLINT := Core local interruptor (where the timer is).
-pub const CLINT_BASE: usize = 0x2000000; // clint is at this location in memlayout.
+// CLINT_BASE: usize = 0x2000000; // clint is at this location in memlayout.
 // xv6-riscv C code:
 // #define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8*(hartid))
 // #define  CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
@@ -39,11 +39,11 @@ pub const CLINT_BASE: usize = 0x2000000; // clint is at this location in memlayo
 //      https://doc.rust-lang.org/std/ptr/fn.write_volatile.html
 // 
 // Generate a machine lvl interrupt by setting mtime to be >= mtimecmp.
-pub fn write_clint(hartid: u64, interval: u64) {
+pub fn write_clint(hartid: u64, base: usize, interval: u64) {
     // Ok, treat base addr as a pointer we can write to.
-    let base = (CLINT_BASE + 0x4000 + 8 * (hartid as usize)) as *mut u64;
+    let base = (base + 0x4000 + 8 * (hartid as usize)) as *mut u64;
     unsafe {
-        base.write_volatile(CLINT_BASE as u64 + 0xBFF8 + interval);
+        base.write_volatile(base as u64 + 0xBFF8 + interval);
     }
 }
 

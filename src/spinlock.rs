@@ -47,7 +47,9 @@ impl<T> Mutex<T> {
         }
     }
 
-    // Still debating just doing this in asm.
+    // Needs to satisfy an atomic swap (acquire)
+    // then a fence so loads and stores aren't reordered until
+    // after lock is acquired.
     pub fn lock(&self) -> MutexGuard<T> {
         // Use Acquire memory order to load lock value.
         // TODO:
