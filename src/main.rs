@@ -100,10 +100,8 @@ fn main() -> ! {
     let id = riscv::read_tp();
     if id == 0 {
         uart::Uart::init();
-        println!("MELLOW SWIRLED (from hart{})", id);
-        log!(Info, "This is a test of the info logging!");
-        log!(Warning, "This is a test of the warning logging!");
-        log!(Error, "This is a test of the error logging!");
+        println!("MELLOW SWIRLED!");
+        log!(Info, "Bootstrapping on hart0...");
     } else {}
 
     loop {}
