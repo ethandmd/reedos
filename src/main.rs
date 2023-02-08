@@ -96,8 +96,15 @@ pub extern "C" fn _start() {
 
 // Doesn't need to be extern C, no_mangle, nothin' fancy...?
 fn main() -> ! {
-    log!(Info, "This is a test of the info logging!");
-    log!(Warning, "This is a test of the warning logging!");
-    log!(Error, "This is a test of the error logging!");
+    // We only bootstrap on hart0.
+    let id = riscv::read_tp();
+    if id == 0 {
+        uart::Uart::init();
+        println!("MELLOW SWIRLED (from hart{})", id);
+        log!(Info, "This is a test of the info logging!");
+        log!(Warning, "This is a test of the warning logging!");
+        log!(Error, "This is a test of the error logging!");
+    } else {}
+
     loop {}
 }

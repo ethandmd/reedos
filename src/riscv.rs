@@ -221,6 +221,14 @@ pub fn write_tp(id: u64) {
     }
 }
 
+pub fn read_tp() -> u64 {
+    let tp: u64;
+    unsafe {
+        asm!("mv {}, tp", out(reg) tp);
+    }
+    tp
+}
+
 // Make sure mret has an addr to go to!
 pub fn call_mret() {
     unsafe {
