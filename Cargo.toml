@@ -7,9 +7,9 @@ edition = "2021"
 
 [dependencies]
 
-#[lib]
-#crate-type = ["staticlib"]
-#path = "src/main.rs"
+[lib]
+crate-type = ["staticlib"] #Absolutely critical, haha.
+path = "src/main.rs"
 
 [profile.dev]
 panic = "abort"
