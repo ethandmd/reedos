@@ -19,6 +19,7 @@ global_asm!(r#"
         li t0, 0x1000 # = 4096
         li t1, 0x2 # For param::NHART == 2...this is unstable.
         mul t0, t0, t1 # 4096 * NHART
+        la sp, end
         add sp, sp, t0 # Setup stack ptr at offset + end of .bss
 
         # Add 4k guard page per hart
