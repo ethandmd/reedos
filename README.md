@@ -5,7 +5,7 @@ You could say reed-oh-ESS, but we like to think it's barely FreeDOS minus the 'f
 In order to get started with this project you'll need the following:
 - Rust (No guarantees this compiles <= 1.67, works on stable at the moment.)
 - `riscv-gnu-toolchain` (don't forget to add to PATH)
-- `rustup add target riscv64gc-unkown-none-elf`
+- `rustup target add riscv64gc-unkown-none-elf`
 ## Usage
 - Build, link, and run reedos on Qemu virt machine:
 `$ make run`
