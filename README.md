@@ -17,6 +17,10 @@ You may find the following debug tools (that you have mostly already installed) 
 - `riscv64-unknown-elf-{nm, objcopy, objdump, gdb, gcov*}`
 - In Qemu with `-nographic` use `Ctr+A` then `c` to get to console, run `help` to see available commands.
 
+### Docs
+ + `$ make docs` automatically builds and open documentation in browser.
+ + `$ cargo docs` build docs.
+
 ### References
 + https://five-embeddev.com/riscv-isa-manual/latest/csr.html
 + https://github.com/mit-pdos/xv6-riscv
