@@ -1,12 +1,12 @@
 /*
  * module for logging generally
  */
-
 macro_rules! print
 {
     ($($args:tt)+) => ({
         use core::fmt::Write;
-        let _ = write!(uart::Uart::new(0x1000_0000), $($args)+);
+        use crate::uart;
+        let _ = write!(uart::WRITER.lock(), $($args)+);
     });
 }
 
