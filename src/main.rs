@@ -51,9 +51,7 @@ fn timerinit() {
 #[no_mangle]
 pub extern "C" fn _start() {
     let fn_main = main as *const ();
-    uart::Uart::init();
-    let id = riscv::read_mhartid();
-    log!(Info, "MELLOW SWIRLED from hart {}", id);
+    
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
     // For sstatus we can write SPP reg, bit 8.
