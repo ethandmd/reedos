@@ -22,6 +22,12 @@
 //    [VIRT_PCIE_ECAM] =    { 0x30000000,    0x10000000 },
 //    [VIRT_PCIE_MMIO] =    { 0x40000000,    0x40000000 },
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
-//};
+//}
 
+// Memlayout params
+pub const UART_BASE: usize = 0x10000000;
+pub const CLINT_BASE: usize = 0x2000000;
+
+
+// Run parameters
 pub const NHART: usize = 2;
