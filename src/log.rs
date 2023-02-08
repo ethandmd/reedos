@@ -1,6 +1,5 @@
-/*
- * module for logging generally
- */
+//! Logging and printing macros
+
 macro_rules! print
 {
     ($($args:tt)+) => ({

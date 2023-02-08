@@ -1,3 +1,4 @@
+//! Rust wrappers around RISC-V routines
 // All referenced from xv6-riscv/kernel/riscv.h
 
 use core::arch::asm;

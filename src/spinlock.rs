@@ -1,7 +1,10 @@
-/// Inspiration taken in no small part from the awesome:
-/// https://marabos.nl/atomics/building-locks.html#mutex
-/// as well as:
-/// https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
+//! Spinlock mutex implementation
+// Inspiration taken in no small part from the awesome:
+// + https://marabos.nl/atomics/building-locks.html#mutex
+// as well as:
+// + https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
+//
+// Opportunity for improvement on locking mechanism.
 use core::cell::UnsafeCell;
 use core::sync::atomic::*;
 
@@ -9,6 +12,9 @@ pub struct MutexGuard<'a, T> {
     mutex: &'a Mutex<T>,
 }
 
+/// A great Rust thing. Locking a mutex returns
+/// a guard which derefs to the type behind the
+/// mutex, which unlocks when it goes out of scope.
 impl<T> core::ops::Deref for MutexGuard<'_, T> {
     type Target = T;
     fn deref(&self) -> &T {

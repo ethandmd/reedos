@@ -1,3 +1,4 @@
+//! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
 
@@ -21,8 +22,10 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-// Have to get the timer interrupts that arrive in mach mode
-// and convert to s/w interrupts for trap.
+// Sets up the core local interrupt controller on each hart.
+// We set up CLINT per hart before we start bootstrapping so
+// we can handle interrupts in supervisor mode (as opposed to
+// machine mode).
 fn timerinit() {
     let clint = param::CLINT_BASE;
     let hartid = read_mhartid();
@@ -45,11 +48,17 @@ fn timerinit() {
 
 }
 
-// Referenced from xv6-riscv/kernel/start.c:
-// Here, we are going to perform set up in machine mode.
-// However, we are going to return (to main) via mret (riscv).
+/// This gets called from src/entry.rs and runs on each hart.
+/// The principle goal is to run configuration steps that will
+/// allow us to run our kernel in supervisor mode. After this
+/// per-hart configuration function runs it calls main(), which
+/// is where we bootstrap and init the kernel.
+///
+/// This is referenced from the xv6-riscv kernel, as we had no
+/// knowledge of how to configure riscv h/w. 
 #[no_mangle]
 pub extern "C" fn _start() {
+    // xv6-riscv/kernel/start.c
     let fn_main = main as *const ();
     
     // Set the *prior* privilege mode to supervisor.
@@ -94,13 +103,16 @@ pub extern "C" fn _start() {
 
 }
 
-// Doesn't need to be extern C, no_mangle, nothin' fancy...?
+// Primary kernel bootstrap function.
+// We ensure that we only initialize kernel subsystems
+// one time by only doing so on hart0, and sending
+// any other hart to essentially wait for interrupt (wfi).
 fn main() -> ! {
     // We only bootstrap on hart0.
     let id = riscv::read_tp();
     if id == 0 {
         uart::Uart::init();
-        println!("MELLOW SWIRLED!");
+        println!("{}",param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
     } else {}
 

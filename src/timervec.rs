@@ -1,3 +1,4 @@
+//! Setup for s/w timer interrupts.
 use core::arch::global_asm;
 use crate::param;
 use crate::riscv;
@@ -30,24 +31,24 @@ impl Clint {
         riscv::write_mscratch(scratchpad_addr);
     }
 }
-    // Best/idiomatic practice here? ultimately going to need
-    // the address of the function timervec to be stored in reg.
-    //
-    //pub fn timervec_fn() -> fn() {
-        // xv6-riscv/kernel/kernelvec.S
-        // 
-        // 1. Store function arguments (a0-7)
-        // in first 3 slots in scratchpad
-        //
-        // 2. Schedule timer interrupt by
-        // adding our interval to mtimecmp reg
-        // who's addr is saved in scratchpad
-        //
-        // 3. Setup s/w interrupt with sip reg
-        // (supervisor interrupt pending) for 
-        // after this function returns with mret.
-        //
-        // 4. Restore regs.
+// Best/idiomatic practice here? ultimately going to need
+// the address of the function timervec to be stored in reg.
+//
+//pub fn timervec_fn() -> fn() {
+// xv6-riscv/kernel/kernelvec.S
+// 
+// 1. Store function arguments (a0-7)
+// in first 3 slots in scratchpad
+//
+// 2. Schedule timer interrupt by
+// adding our interval to mtimecmp reg
+// who's addr is saved in scratchpad
+//
+// 3. Setup s/w interrupt with sip reg
+// (supervisor interrupt pending) for 
+// after this function returns with mret.
+//
+// 4. Restore regs.
 global_asm!(r#"
     .globl timervec
     .align 4
@@ -80,8 +81,3 @@ timervec:
 
 //#[no_mangle]
 pub unsafe extern "C" fn timervec() {}
-
-        //extern "C" fn timervec() {}
-    //}
-
-//}

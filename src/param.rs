@@ -1,3 +1,4 @@
+//! System parameters and memory layout.
 // Qemu riscv virt machine memory locations you want to know:
 // https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c
 //
@@ -31,3 +32,15 @@ pub const CLINT_BASE: usize = 0x2000000;
 
 // Run parameters
 pub const NHART: usize = 2;
+
+
+// Unnecessary.
+pub const BANNER: &'static str = r#"
+Mellow Swirled to
+                       __
+   ________  ___  ____/ /___  _____
+  / ___/ _ \/ _ \/ __  / __ \/ ___/
+ / /  /  __/  __/ /_/ / /_/ (__  )
+/_/   \___/\___/\__,_/\____/____/
+
+"#;

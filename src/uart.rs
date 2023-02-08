@@ -1,3 +1,4 @@
+//! Driver code for UART MM I/O device
 // Referenced from:
 // https://github.com/mit-pdos/xv6-riscv/blob/riscv/kernel/uart.c
 // from https://github.com/sgmarz/osblog/tree/master/risc_v/src
@@ -28,10 +29,6 @@ impl Write for Uart {
 }
 
 impl Uart {
-    //const IER: usize = 1; // Interrupt Enable Register
-    //const LCR: usize = 3; // Line Control Register (baud rate stuff)
-    //const FCR: usize = 2; // FIFO Control Register (see uart layout in reference)
-    //const LSR: usize = 2; // Line Status Register (ready to rx, ready to tx signals) 
     pub fn init() {
         // https://mth.st/blog/riscv-qemu/AN-491.pdf <-- inclues 16650A ref
         let ptr = UART_BASE as *mut u8;

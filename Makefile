@@ -8,7 +8,9 @@ lint:
 	rustup component add rustfmt # Not for nightly
 	cargo fmt --all -- --check #Add config
 	cargo clippy
-	# cargo doc <-- should start documenting
+
+docs:
+	cargo doc --open
 
 run: build
 	echo "Ctrl-a x to quit qemu"
