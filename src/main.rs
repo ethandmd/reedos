@@ -12,7 +12,6 @@ pub mod lock;
 pub mod trap;
 pub mod device;
 
-use log::*;
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
