@@ -87,6 +87,14 @@ pub fn write_mepc(addr: *const ()) {
     }
 }
 
+pub fn read_mepc() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, mepc", out(reg) addr);
+    }
+    addr
+}
+
 pub fn read_sstatus() -> u64 {
     let status: u64;
     unsafe {
@@ -205,10 +213,26 @@ pub fn write_pmpaddr0(addr: u64) {
     }
 }
 
+pub fn read_pmpaddr0() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, pmpaddr0", out(reg) addr);
+    }
+    addr
+}
+
 pub fn write_pmpcfg0(addr: u64) {
     unsafe {
         asm!("csrw pmpcfg0, {}", in(reg) addr);
     }
+}
+
+pub fn read_pmpcfg0() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, pmpcfg0", out(reg) addr);
+    }
+    addr
 }
 
 // Just for curiosity's sake:
