@@ -6,7 +6,7 @@ use core::fmt::Write;
 use core::fmt::Error;
 
 use crate::hw::param::UART_BASE;
-use crate::spinlock::Mutex;
+use crate::lock::mutex::*;
 
 const IER: usize = 1; // Interrupt Enable Register
 const LCR: usize = 3; // Line Control Register (baud rate stuff)

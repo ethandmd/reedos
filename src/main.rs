@@ -8,7 +8,7 @@ pub mod entry;
 #[macro_use]
 pub mod log;
 pub mod hw;
-pub mod spinlock;
+pub mod lock;
 pub mod trap;
 pub mod device;
 
