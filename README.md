@@ -22,6 +22,7 @@ You may find the following debug tools (that you have mostly already installed) 
  + `$ cargo docs` build docs.
 
 ### References
++ https://riscv.org/technical/specifications/ (Go to "Volume 2, Privileged Specification")
 + https://five-embeddev.com/riscv-isa-manual/latest/csr.html
 + https://github.com/mit-pdos/xv6-riscv
 + https://osblog.stephenmarz.com/index.html
