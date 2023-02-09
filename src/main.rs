@@ -10,7 +10,7 @@ pub mod log;
 pub mod param;
 pub mod riscv;
 pub mod spinlock;
-pub mod timervec;
+pub mod trapvec;
 pub mod uart;
 use log::*;
 use riscv::*;
@@ -31,12 +31,12 @@ fn timerinit() {
     let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
     write_clint(hartid, clint, interval);
     
-    let mut clint = timervec::Clint::new(clint);
+    let mut clint = trapvec::Clint::new(clint);
     clint.init(hartid as usize, interval);
 
     // Set the machine trap vector to hold fn ptr to timervec:
     // https://stackoverflow.com/questions/50717928/what-is-the-difference-between-mscratch-and-mtvec-registers
-    let timervec_fn = timervec::timervec as *const (); 
+    let timervec_fn = trapvec::timervec as *const (); 
     write_mtvec(timervec_fn);
     
     // Enable machine mode interrupts with mstatus reg.
