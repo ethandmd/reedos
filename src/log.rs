@@ -66,7 +66,3 @@ macro_rules! log
 	print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
     });
 }
-
-pub(crate) use log;
-pub(crate) use print;
-pub(crate) use println;
