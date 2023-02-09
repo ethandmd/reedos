@@ -1,6 +1,6 @@
 //! Setup for s/w timer interrupts.
-use crate::param;
-use crate::riscv;
+use crate::hw::param;
+use crate::hw::riscv;
 use core::arch::global_asm;
 
 // Core Local Interrupt Timer driver and functions.

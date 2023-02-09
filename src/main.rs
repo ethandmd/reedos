@@ -7,13 +7,16 @@ use core::panic::PanicInfo;
 pub mod entry;
 #[macro_use]
 pub mod log;
-pub mod param;
-pub mod riscv;
+pub mod hw;
 pub mod spinlock;
-pub mod trapvec;
-pub mod uart;
+pub mod trap;
+pub mod device;
+
 use log::*;
-use riscv::*;
+use crate::hw::riscv::*;
+use crate::hw::param;
+use crate::device::uart;
+use crate::trap::trapvec;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -106,7 +109,7 @@ pub extern "C" fn _start() {
 // any other hart to essentially wait for interrupt (wfi).
 fn main() -> ! {
     // We only bootstrap on hart0.
-    let id = riscv::read_tp();
+    let id = read_tp();
     if id == 0 {
         uart::Uart::init();
         println!("{}", param::BANNER);
