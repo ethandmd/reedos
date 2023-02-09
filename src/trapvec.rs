@@ -81,4 +81,4 @@ timervec:
 );
 
 //#[no_mangle]
-pub unsafe extern "C" fn timervec() {}
+extern "C" { pub fn timervec(); }

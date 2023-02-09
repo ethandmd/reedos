@@ -36,7 +36,7 @@ fn timerinit() {
 
     // Set the machine trap vector to hold fn ptr to timervec:
     // https://stackoverflow.com/questions/50717928/what-is-the-difference-between-mscratch-and-mtvec-registers
-    let timervec_fn = trapvec::timervec as *const (); 
+    let timervec_fn = trapvec::timervec as *const ();
     write_mtvec(timervec_fn);
     
     // Enable machine mode interrupts with mstatus reg.
