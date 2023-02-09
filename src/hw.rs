@@ -22,8 +22,17 @@ pub fn timerinit() {
     write_mtvec(timervec_fn);
 
     // Enable machine mode interrupts with mstatus reg.
-    write_mstatus(read_mstatus() | MSTATUS_MIE);
+    let mstatus = read_mstatus() | MSTATUS_MIE;
+    write_mstatus(mstatus);
 
     // Enable machine-mode timer interrupts.
-    write_mie(read_mie() | MIE_MTIE);
+    let mie = read_mie() | MIE_MTIE;
+    write_mie(mie);
+
+    #[cfg(debug_assertions)] {
+        log!(Debug, " HART{}, timervec_fn: {}, mtvec reg: {}", hartid, timervec_fn as usize, read_mtvec());
+        log!(Debug, " HART{}, mstatus: {}, mstatus reg: {}", hartid, mstatus, read_mstatus());
+        log!(Debug, " HART{}, mie: {}, mie reg: {}", hartid, mie, read_mie());
+
+    }
 }

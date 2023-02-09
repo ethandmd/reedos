@@ -274,7 +274,13 @@ pub fn write_mtvec(addr: *const ()) {
     }
 }
 
-
+pub fn read_mtvec() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, mtvec", out(reg) addr);
+    }
+    addr
+}
 
 
 
