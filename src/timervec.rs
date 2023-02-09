@@ -66,6 +66,8 @@ timervec:
     # Store value in mtimecmp reg
     sd a3, 0(a1)
 
+    # Call supervisor s/w interrupt to happen
+    # after this returns so the kernel can handle.
     li a1, 2
     csrw sip, a1
 
