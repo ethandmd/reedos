@@ -16,7 +16,6 @@ use log::*;
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
-use crate::trap::trapvec;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -24,40 +23,11 @@ fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-// Sets up the core local interrupt controller on each hart.
-// We set up CLINT per hart before we start bootstrapping so
-// we can handle interrupts in supervisor mode (as opposed to
-// machine mode).
-fn timerinit() {
-    let clint = param::CLINT_BASE;
-    let hartid = read_mhartid();
-    let interval = 1000000; // <- # no. cycles ~ 1/10 sec in qemu.
-    write_clint(hartid, clint, interval);
-    
-    let mut clint = trapvec::Clint::new(clint);
-    clint.init(hartid as usize, interval);
-
-    // Set the machine trap vector to hold fn ptr to timervec:
-    // https://stackoverflow.com/questions/50717928/what-is-the-difference-between-mscratch-and-mtvec-registers
-    let timervec_fn = trapvec::timervec as *const ();
-    write_mtvec(timervec_fn);
-    
-    // Enable machine mode interrupts with mstatus reg.
-    write_mstatus(read_mstatus() | MSTATUS_MIE);
-
-    // Enable machine-mode timer interrupts.
-    write_mie(read_mie() | MIE_MTIE);
-
-}
-
 /// This gets called from src/entry.rs and runs on each hart.
-/// The principle goal is to run configuration steps that will
-/// allow us to run our kernel in supervisor mode. After this
-/// per-hart configuration function runs it calls main(), which
-/// is where we bootstrap and init the kernel.
+/// Run configuration steps that will allow us to run the 
+/// kernel in supervisor mode.
 ///
-/// This is referenced from the xv6-riscv kernel, as we had no
-/// knowledge of how to configure riscv h/w. 
+/// This is referenced from the xv6-riscv kernel.
 #[no_mangle]
 pub extern "C" fn _start() {
     // xv6-riscv/kernel/start.c
@@ -78,21 +48,22 @@ pub extern "C" fn _start() {
     // Disable paging while setting up.
     write_satp(0);
 
-    // Allow our kernel to handle interrupts from sup mode
-    // by "delegating" interrupts and exceptions.
-    // medeleg => synchronous interrupt
-    // mideleg => asynchronous interrupt
-    write_medeleg(0xffff); // Check 3.1.8 in: (haven't read it in full yet)
-    write_mideleg(0xffff); // https://five-embeddev.com/riscv-isa-manual/latest/machine.html#machine
-    write_sie(read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
+    // Delegate trap handlers to kernel in supervisor mode.
+    // Write 1's to all bits of register and read back reg
+    // to see which positions hold a 1.
+    write_medeleg(0xffffffff);
+    write_mideleg(0xffffffff);
+    //Supervisor interrupt enable.
+    let sie = read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE;
+    write_sie(sie);
 
-    // Now give sup mode access to (all??) of phys mem.
-    // Check 3.1.6 of line 66 link.
-    write_pmpaddr0(0x3fffffffffffff_u64); // Prayers that ULL == u64
-    write_pmpcfg0(0xf);
+    // Now give sup mode access to phys mem.
+    // Check 3.7.1 of riscv priv isa manual.
+    write_pmpaddr0(0x3fffffffffffff_u64); // RTFM
+    write_pmpcfg0(0xf); // 1st 8 bits are pmp0cfg
 
-    // Get interrupts from clock, handled by timerinit().
-    timerinit();
+    // Get interrupts from clock and set mtev handler fn.
+    hw::timerinit();
 
     // Store each hart's hartid in its tp reg for identification.
     let hartid = read_mhartid();
