@@ -27,6 +27,10 @@ global_asm!(
         # Linker position data relative to gp
         la gp, _global_pointer
     .option pop
+        # Setup early trap vector
+        # for early boot oopses.
+        la t0, early_trap_vector
+        csrw mtvec, t0
 
         # Set up stack per # of hart ids
         li t0, 0x0
@@ -48,5 +52,13 @@ global_asm!(
     spin:
         # wfi
         j spin
+
+    early_trap_vector:
+        .cfi_startproc # Start of fn frame?
+        csrr t0, mcause # Get trap cause
+        csrr t1, mepc # get pc
+        csrr t2, mtval 
+        j early_trap_vector
+        .cfi_endproc
     "#
 );
