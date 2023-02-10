@@ -1,6 +1,8 @@
 # reedos
 You could say reed-oh-ESS, but we like to think it's barely FreeDOS minus the 'f'. Like rEE-doss. 
 
+See [Contribution Guidelines](CONTRIBUTING.md) if you're interested in getting involved.
+
 ## Setup
 In order to get started with this project you'll need the following:
 - Rust (No guarantees this compiles <= 1.67, works on stable at the moment.)
