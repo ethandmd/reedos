@@ -2,6 +2,7 @@
 // All referenced from xv6-riscv/kernel/riscv.h
 
 use core::arch::asm;
+use crate::trap;
 
 // MPP := Machine previous protection mode.
 pub const MSTATUS_MPP_MASK: u64 = 3 << 11; // Mask for bit tricks
@@ -267,8 +268,7 @@ pub fn write_mscratch(scratch: usize) {
     }
 }
 
-// Give address of timervec address.
-pub fn write_mtvec(addr: *const ()) {
+pub fn write_mtvec(addr: trap::__HANDLER) {
     unsafe {
         asm!("csrw mtvec, {}", in(reg) addr);
     }
@@ -282,7 +282,19 @@ pub fn read_mtvec() -> usize {
     addr
 }
 
+pub fn write_stvec(addr: trap::__HANDLER) {
+    unsafe {
+        asm!("csrw stvec, {}", in(reg) addr);
+    }
+}
 
+pub fn read_stvec() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, stvec", out(reg) addr);
+    }
+    addr
+}
 
 
 

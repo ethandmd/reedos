@@ -2,7 +2,7 @@ pub mod riscv;
 pub mod param;
 
 use riscv::*;
-use crate::trap::clint;
+use crate::trap::{self, clint};
 
 // Sets up the core local interrupt controller on each hart.
 // We set up CLINT per hart before we start bootstrapping so
@@ -18,7 +18,7 @@ pub fn timerinit() {
     clint.init(hartid as usize, interval);
 
     // Set the machine trap vector to hold fn ptr to timervec.
-    let timervec_fn = clint::timervec as *const ();
+    let timervec_fn = trap::__TIMERVEC;
     write_mtvec(timervec_fn);
 
     // Enable machine mode interrupts with mstatus reg.
