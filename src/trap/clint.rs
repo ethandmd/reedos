@@ -3,7 +3,8 @@ use crate::hw::param;
 use crate::hw::riscv;
 use core::arch::global_asm;
 
-// Core Local Interrupt Timer driver and functions.
+// Cmp CLINT vs CLIC.
+// Core Local Interruptor driver and functions.
 // Use memory mapped I/O on CLINT base address to program
 // interrupts and set up memory for mscratch.
 pub struct Clint {
