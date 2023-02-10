@@ -238,9 +238,15 @@ SECTIONS
      Finally, our heap starts right after the kernel stack. This heap will be used mainly
 	 to dole out memory for user-space applications. However, in some circumstances, it will
 	 be used for kernel memory as well.
-
-	 We don't align here because we let the kernel determine how it wants to do this.
   */
-  PROVIDE(_heap_start = _stack_end);
+  . = ALIGN(4096);
+  PROVIDE(_page_size = 4096); 	/* might as well do this here */
+  
+  PROVIDE(_entry_table_start = _stack_end);
+  PROVIDE(_entry_table_end = _entry_table_start + 0x4000); /* 4 pages of entries */
+  PROVIDE(_entry_table_size = _entry_table_end - _entry_table_start);
+  
+  PROVIDE(_heap_start = _entry_table_end);
   PROVIDE(_heap_size = _memory_end - _heap_start);
+  PROVIDE(_heap_end = _memory_end);
 }
