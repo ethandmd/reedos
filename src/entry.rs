@@ -32,7 +32,7 @@ global_asm!(
         li t0, 0x0
         li t0, 0x1000 # = 4096
         li t1, 0x2 # For param::NHART == 2...this is unstable.
-        mulw t0, t0, t1 # 4096 * NHART
+        mul t0, t0, t1 # 4096 * NHART
         la sp, end
         add sp, sp, t0 # Setup stack ptr at offset + end of .bss
 
@@ -40,7 +40,7 @@ global_asm!(
         li a0, 0x1000
         csrr a1, mhartid
         addi a1, a1, 1
-        mulw a0, a0, a1
+        mul a0, a0, a1
         add sp, sp, a0
         
         # Jump to _start in src/main.rs
