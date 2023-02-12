@@ -1,12 +1,11 @@
-/*
- * module for logging generally
- */
+//! Logging and printing macros
 
 macro_rules! print
 {
     ($($args:tt)+) => ({
         use core::fmt::Write;
-        let _ = write!(uart::Uart::new(0x1000_0000), $($args)+);
+        use crate::uart;
+        let _ = write!(uart::WRITER.lock(), $($args)+);
     });
 }
 
@@ -27,7 +26,7 @@ pub enum LogSeverity {
     Debug,
     Info,
     Warning,
-    Error
+    Error,
 }
 
 
@@ -67,8 +66,3 @@ macro_rules! log
 	print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
     });
 }
-
-
-pub(crate) use print;
-pub(crate) use println;
-pub(crate) use log;

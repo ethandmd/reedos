@@ -1,0 +1,11 @@
+Collecting useful qemu commands here:
+
+Ctrl-a c                   <- starts (qemu) command mode. Executable continues
+(qemu) xp/20i 0x8000000    <- disassembles 20 instructions, start addr
+(qemu) info registers      <- shows the current state of registers
+(qemu) info roms
+(qemu) info mtree          <- the memory map
+(qemu) system_reset        <- reboots the machine (hello world again!)
+(qemu) quit
+(qemu) help                <- top-level help
+(qemu) help info (or other command) - help with that command

@@ -1,6 +1,8 @@
+//! Rust wrappers around RISC-V routines
 // All referenced from xv6-riscv/kernel/riscv.h
 
 use core::arch::asm;
+use crate::trap;
 
 // MPP := Machine previous protection mode.
 pub const MSTATUS_MPP_MASK: u64 = 3 << 11; // Mask for bit tricks
@@ -84,6 +86,14 @@ pub fn write_mepc(addr: *const ()) {
     unsafe {
         asm!("csrw mepc, {}", in(reg) addr);
     }
+}
+
+pub fn read_mepc() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, mepc", out(reg) addr);
+    }
+    addr
 }
 
 pub fn read_sstatus() -> u64 {
@@ -204,10 +214,26 @@ pub fn write_pmpaddr0(addr: u64) {
     }
 }
 
+pub fn read_pmpaddr0() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, pmpaddr0", out(reg) addr);
+    }
+    addr
+}
+
 pub fn write_pmpcfg0(addr: u64) {
     unsafe {
         asm!("csrw pmpcfg0, {}", in(reg) addr);
     }
+}
+
+pub fn read_pmpcfg0() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, pmpcfg0", out(reg) addr);
+    }
+    addr
 }
 
 // Just for curiosity's sake:
@@ -219,6 +245,14 @@ pub fn write_tp(id: u64) {
     unsafe {
         asm!("mv tp, {}", in(reg) id);
     }
+}
+
+pub fn read_tp() -> u64 {
+    let tp: u64;
+    unsafe {
+        asm!("mv {}, tp", out(reg) tp);
+    }
+    tp
 }
 
 // Make sure mret has an addr to go to!
@@ -234,16 +268,33 @@ pub fn write_mscratch(scratch: usize) {
     }
 }
 
-// Give address of timervec address.
-pub fn write_mtvec(addr: *const ()) {
+pub fn write_mtvec(addr: trap::__HANDLER) {
     unsafe {
         asm!("csrw mtvec, {}", in(reg) addr);
     }
 }
 
+pub fn read_mtvec() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, mtvec", out(reg) addr);
+    }
+    addr
+}
 
+pub fn write_stvec(addr: trap::__HANDLER) {
+    unsafe {
+        asm!("csrw stvec, {}", in(reg) addr);
+    }
+}
 
-
+pub fn read_stvec() -> usize {
+    let addr: usize;
+    unsafe {
+        asm!("csrr {}, stvec", out(reg) addr);
+    }
+    addr
+}
 
 
 
