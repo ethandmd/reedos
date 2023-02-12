@@ -1,6 +1,8 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
+#![feature(pointer_byte_offsets)]
+
 
 use core::panic::PanicInfo;
 
@@ -15,6 +17,8 @@ pub mod device;
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
+
+pub mod alloc;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
