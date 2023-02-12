@@ -28,7 +28,7 @@
 // Memlayout params
 pub const UART_BASE: usize = 0x10000000;
 pub const CLINT_BASE: usize = 0x2000000;
-
+pub const PAGE_SIZE: usize = 4096;
 
 // Run parameters
 pub const NHART: usize = 2;

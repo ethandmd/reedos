@@ -240,13 +240,8 @@ SECTIONS
 	 be used for kernel memory as well.
   */
   . = ALIGN(4096);
-  PROVIDE(_page_size = 4096); 	/* might as well do this here */
   
-  PROVIDE(_entry_table_start = _stack_end);
-  PROVIDE(_entry_table_end = _entry_table_start + 0x4000); /* 4 pages of entries */
-  PROVIDE(_entry_table_size = _entry_table_end - _entry_table_start);
-  
-  PROVIDE(_heap_start = _entry_table_end);
+  PROVIDE(_heap_start = .);
   PROVIDE(_heap_size = _memory_end - _heap_start);
   PROVIDE(_heap_end = _memory_end);
 }

@@ -2,6 +2,10 @@
 #![no_std]
 #![no_main]
 #![feature(pointer_byte_offsets)]
+<<<<<<< HEAD:src/lib.rs
+=======
+
+>>>>>>> 52fadae (Almost working. GlobalAlloc trait causing mut/not-mut issues):src/main.rs
 
 use core::panic::PanicInfo;
 
@@ -16,6 +20,8 @@ pub mod device;
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
+
+pub mod alloc;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
