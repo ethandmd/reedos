@@ -11,26 +11,19 @@ use core::alloc::*;
 use core::mem;
 
 const PAGE_SIZE: usize = 4096;
-    
+
+// util page stuff
+fn same_page(a: usize, b: usize) -> bool {
+    a & !(PAGE_SIZE - 1) == b & !(PAGE_SIZE - 1)
+}
+
 /// store the overhead info for a chunk
 ///
 /// This is directly before the chunk allocated for user memory that
 /// it corresponds to
-///
-/*
- * this is not currently true
- * 
-/// next and prev are only meaningful if this chunk is both valid and
-/// free. In that case they link in a circular doubly linked list to
-/// the other free chunks of the pool. If this chunk is in use, then
-/// the next chunk can be found by using the offset based on the size
-/// in the header.
-*/
 struct k_chunk_header {
     size: usize,		// includes this header
     layout: Layout,
-    // next: *mut k_chunk_header,
-    // prev: *mut k_chunk_header,
     is_free: bool,
 }
 
@@ -72,35 +65,53 @@ impl k_struct_header {
 	(&self as *mut u8).offset(1)
     }
 
-    //TODO this should be an option, as it might fail. How can we catch that?
-    fn next(&self) -> *mut k_chunk_header {
-	(&self as *mut u8).byte_offset(self.size())
+    // pointer to the next header, or None. See kalloc struct for when this could fail
+    fn next(&self) -> Option<*mut k_chunk_header> {
+	let next = (&self as *mut k_chunk_header).byte_offset(self.size());
+	if same_page(&self as usize, next as usize) {
+	    Some(next)
+	} else {
+	    None
+	}
     }
 
     fn attempt_merge(&mut self) {
-	let next_chunk = self.next();
-	if next_chunk.is_free() {
-	    self.set_usable_size(self.usable_size() + next_chunk.size());
+	let pos_next = self.next();
+	match pos_next {
+	    Some(next) => {
+		if next_chunk.is_free() {
+		    self.set_usable_size(self.usable_size() + next_chunk.size());
+		} else {
+		    // do nothing
+		}
+	    },
+	    None => {
+		// do nothing
+	    }
 	}
+    }
+
+    fn matches_layout(layout: &Layout) -> bool {
+	self.layout() == layout
     }
 }
 
 struct k_chunk_iter {
-    current: *mut k_chunk_header,
-    offset: usize,
+    current: Option<*mut k_chunk_header>,
 }
 
 impl Iterator for k_chunk_iter {
     type Item = k_chunk_header;
 
-    fn next (&self) -> Option<Self::Item> {
-	if offset == PAGE_SIZE {
-	    None
-	} else {
-	    let hold = self.current;
-	    self.current = self.current.byte_offset(self.current.size());
-	    self.offset += self.current.size();
-	    hold
+    fn next (&mut self) -> Option<Self::Item> {
+	match self.current {
+	    None => {
+		None
+	    },
+	    Some(chunk) => {
+		self.current = self.current.next();
+		Some(chunk)
+	    }
 	}
     }
 }
@@ -116,16 +127,17 @@ impl IntoIter for kalloc {
 
     fn into_iter(self) -> Self::IntoIter {
 	k_chunk_iter {
-	    current: pool,
-	    offset: 0,
+	    current: Some(pool),
 	};
     }
 }
 
 impl kalloc {
     fn new(page: *mut u8) -> Self {
-	self.pool = page;
+	self.pool = page as *mut k_chunk_header;
     }
+
+    // TODO this and next can be replaced with stuff from core::pointer I think
     
     /// make a size request conform to it's matching alignment
     fn adjust_size_with_align(size: usize, align: &usize) -> usize {
@@ -153,9 +165,9 @@ impl kalloc {
 }
 
 impl GlobalAlloc for kalloc {
-    fn alloc(layout: Layout) -> *mut u8 {
+    fn alloc(&self, layout: Layout) -> *mut u8 {
 	let internal_align = min(layout.align(), mem::size_of<k_chunk_header>());
-	let internal_size = adjust_size_with_align(layout.size(), internal_size);
+	let internal_size = adjust_size_with_align(layout.size(), internal_align);
 
 	for &mut chunk in self {
 	    let useable_size = chunk.usable_size();
@@ -180,8 +192,105 @@ impl GlobalAlloc for kalloc {
 		}
 	    } 
 	}
+	return Null;		// just means this page can't fit it, not a user level failure yet.
     }
 
     //dealloc, realloc, alloc_with_zero, see docs
+    fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+	let previous: Option<*mut k_chunk_header> = None;
+	for &mut chunk in self {
+	    if chunk.matches_layout(layout) {
+		// this is it
+		chunk.set_is_free(true);
+		chunk.attempt_merge();
+		if previous != None && previous.is_free() {
+		    previous.unwrap().attempt_merge();
+		}
+		return;
+	    } else {
+		// keep moving
+		previous = Some(chunk as *mut k_chunk_header);
+	    }
+	}
+	panic!("Dealloc Failure: Chunk not found. Have you changed your pointer or layout? Did you dealloc something from a different page?");
+    }
+
+    fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+	let ptr = self.alloc(layout);
+	for i in 0..layout.size() {
+	    ptr.byte_offset(i).write(0);
+	}
+	ptr
+    }
+
+    /// might work, but unsable and incomplete atm.
+    ///
+    /// highly suggest using alloc and dealloc yourself if you are moving large amounts of data
+    fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) {
+	let previous: Option<*mut k_chunk_header> = None;
+	let internal_align = min(layout.align(), mem::size_of<k_chunk_header>());
+	let internal_size = adjust_size_with_align(new_size, internal_align);
+	
+	for &mut chunk in self {
+	    if chunk.matches_layout(layout) {
+		// this is it
+		chunk.set_is_free(true);
+		chunk.attempt_merge();
+		if previous != None && previous.unwrap().is_free() {
+		    let p_chunk = previous.unwrap();
+		    p_chunk.attempt_merge();
+		    if p_chunk.usable_size() > internal_size {
+			// we can use prev: copy and be wary of
+			// overlap. we are writing forward from source
+			// to dest, and dest comes before source, so
+			// we should be fine
+			p_chunk.set_is_free(false);
+			let dest = p_chunk.user_data() as *mut u8;
+			let src = chunk.user_data() as *mut u8;
+			for off in 0..chunk.usable_size() { 
+			    dest.byte_offset(off).write(
+				src.byte_offset(off).read());
+			}
+			p_chunk.set_layout(layout.with_size(new_size));
+			return p_chunk.user_data();
+		    }
+		} else if chunk.usable_size() > internal_size {
+		    // prev wasn't free, didn't exist, or wasn't
+		    // big enough. Next we can try to see if the
+		    // newly (maybe) merged chunk we just "freed"
+		    // is big enough.
+		    chunk.set_is_free(false);
+		    chunk.set_layout(layout.with_size(new_size));
+		    return chunk.user_data();
+		} else {
+		    // neither prev nor the chunk we freed worked, just straight alloc
+
+		    // TODO this retraverses part of the array. fix it.
+		    //
+		    // also calling out to alloc is a little
+		    // risky, as currently chunk is marked as free
+		    // but we have yet to move that data we need
+		    // out of it. Currently it should be fine, but
+		    // in the future, this should not call out to
+		    // general alloc, as we don't guarentee that
+		    // alloc won't do wacky stuff to try to find
+		    // space, possibly clobbering the data we need
+		    //
+		    // also this may fail, if the current page
+		    // doesn't have space for it, as it will not
+		    // allocate nor search for other pools to
+		    // relocate into
+		    let dest = self.alloc(layout.with_size(new_size));
+		    let src = chunk.user_data();
+		    for off in 0..chunk.usable_size() {
+			dest.byte_offset(off).write(
+			    src.byte_offset(off).read());
+		    }
+		    return dest;
+		} 
+	    }
+	}
+	panic!("Realloc Failure: Chunk not found. Have you changed your pointer or layout? Did you dealloc something from a different page?")
+    }
 }
 
