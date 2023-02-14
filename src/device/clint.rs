@@ -20,13 +20,13 @@ impl Clint {
     // mtimecmp reg is at base + 0x4000
     // mtime reg is base + 0xbff8
     pub fn bump_mtimecmp(&self, interval: u64) {
-        let hartid = riscv::read_tp();
-        let base: *mut usize = self.base as *mut usize;
+        let hartid = riscv::read_tp() as usize;
+        let base = self.base as *mut usize;
         unsafe {
             // One mtime register for all cores.
-            let mtime = base.add(0xbff8).read_volatile();
+            let mtime = base.byte_add(0xBFF8).read_volatile();
             // mtimecmp register per core.
-            base.add(0x4000 + 8*(hartid) as usize).write_volatile(mtime + interval as usize);
+            base.byte_add(0x4000 + 8*hartid).write_volatile(mtime + interval as usize);
         }
     }
 }

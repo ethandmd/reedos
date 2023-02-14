@@ -5,7 +5,6 @@ use core::arch::asm;
 
 use riscv::*;
 use crate::device::clint::Clint;
-use crate::trap;
 
 // Sets up the core local interrupt controller on each hart.
 // We set up CLINT per hart before we start bootstrapping so
@@ -17,7 +16,7 @@ pub fn timerinit() {
     clint.bump_mtimecmp(interval);
 
     // Set the machine trap vector to hold fn ptr to timervec.
-    let timervec_fn = trap::__TIMERVEC;
+    let timervec_fn = timervec;
     write_mtvec(timervec_fn);
 
     // Enable machine mode interrupts with mstatus reg.
