@@ -11,20 +11,22 @@ use crate::trap;
 // machine mode).
 pub fn timerinit() {
     let interval = 10_000_000;
-    //clint::bump_mtimecmp(interval);
-
+    clint::set_mtimecmp(interval);
+    
     // Set the machine trap vector to hold fn ptr to timervec.
     let timervec_fn = trap::__mtrapvec;
     write_mtvec(timervec_fn as usize);
 
     // Enable machine mode interrupts with mstatus reg.
-    let mstatus = read_mstatus() | MSTATUS_MIE;
+    let mut mstatus = read_mstatus(); 
+    mstatus |= MSTATUS_MIE;
     write_mstatus(mstatus);
+    log!(Debug, "mstatus: {:#02x}", mstatus);
 
     // Enable machine-mode timer interrupts.
     let mie = read_mie() | MIE_MTIE;
     write_mie(mie);
-
+    
     #[cfg(debug_assertions)] {
         let hartid = riscv::read_mhartid();
         log!(Debug, " HART{}, timervec_fn: {:#02x}, mtvec reg: {:#02x}", hartid, timervec_fn as usize, read_mtvec());

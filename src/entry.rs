@@ -43,7 +43,7 @@ global_asm!(
         # Jump to _start in src/main.rs
         call _start
     spin:
-        #wfi
-        j spin
+        wfi
+        #j spin
     "#
 );

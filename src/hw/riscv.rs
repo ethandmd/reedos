@@ -62,6 +62,14 @@ pub fn read_mcause() -> u64 {
     cause
 }
 
+pub fn read_scause() -> u64 {
+    let cause: u64;
+    unsafe {
+        asm!("csrr {}, scause", out(reg) cause);
+    }
+    cause
+}
+
 // Set mepc := machine exception program counter.
 // a.k.a. what instr (address) to go to from exception.
 pub fn write_mepc(addr: *const ()) {

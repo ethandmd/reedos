@@ -1,5 +1,5 @@
 use core::arch::global_asm;
-use crate::hw::riscv;
+use crate::hw::{riscv, param};
 use crate::device::clint;
 
 extern "C" {
@@ -7,17 +7,32 @@ extern "C" {
     pub fn __strapvec();
 }
 
-pub fn handler() {
+// Async interrupts have MSB = 1
+// Sync interrupts have MSB = 0
+fn handler() {
     let id = riscv::read_tp();
     let cause = riscv::read_mcause();
-    print!("{}: {} ", id, cause);
-    clint::bump_mtimecmp(10_000_000);
+    print!("{}: {:#02x} ", id, cause); 
+}
+
+fn mbump() {
+    let hartid = riscv::read_mhartid();
+    if hartid == 0 {
+        clint::set_mtimecmp(10_000_000);
+        println!("{}:{:#02x}",hartid, riscv::read_mcause());
+        // Trigger local s/w interrupt (msip is 1 bit wide)
+        //let base = param::CLINT_BASE as *mut usize;
+        //unsafe { 
+        //    base.byte_add(4*hartid as usize).write_volatile(1); 
+        //}
+    }
 }
 
 global_asm!(
     r#"
-    .globl __mtrapvec
+    .option norvc
     .align 4
+    .globl __mtrapvec
  __mtrapvec:
     addi sp, sp, -256
   
@@ -52,14 +67,13 @@ global_asm!(
     sd x28, 224(sp)
     sd x29, 232(sp)
     sd x30, 240(sp)
-  
+
     call {}
-  
+ 
     ld x0, 0(sp)
     ld x1, 8(sp)
     ld x2, 16(sp)
     ld x3, 24(sp)
-    ld x4, 32(sp)
     ld x5, 40(sp)
     ld x6, 48(sp)
     ld x7, 56(sp)
@@ -89,11 +103,12 @@ global_asm!(
   
     addi sp, sp, 256
     mret
-    "#, sym handler
+    "#, sym mbump//, sym handler
 );
 
 global_asm!(
     r#"
+    .option norvc
     .globl __strapvec
     .align 4
  __strapvec:
@@ -137,7 +152,7 @@ global_asm!(
     ld x1, 8(sp)
     ld x2, 16(sp)
     ld x3, 24(sp)
-    ld x4, 32(sp)
+    #ld x4, 32(sp)
     ld x5, 40(sp)
     ld x6, 48(sp)
     ld x7, 56(sp)

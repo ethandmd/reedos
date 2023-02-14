@@ -4,7 +4,7 @@ use crate::hw::riscv;
 
 // mtimecmp reg is at base + 0x4000
 // mtime reg is base + 0xbff8
-pub fn bump_mtimecmp(interval: u64) {
+pub fn set_mtimecmp(interval: u64) {
     let hartid = riscv::read_mhartid() as usize;
     let base = param::CLINT_BASE as *mut usize;
     unsafe {
@@ -14,4 +14,3 @@ pub fn bump_mtimecmp(interval: u64) {
         base.byte_add(0x4000 + 8*hartid).write_volatile(mtime + interval as usize);
     }
 }
-

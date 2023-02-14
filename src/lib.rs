@@ -51,11 +51,11 @@ pub extern "C" fn _start() {
     // Delegate trap handlers to kernel in supervisor mode.
     // Write 1's to all bits of register and read back reg
     // to see which positions hold a 1.
-    //write_medeleg(0xffffffff);
-    //write_mideleg(0xffffffff);
+    write_medeleg(0xffff);
+    write_mideleg(0xffff);
     //Supervisor interrupt enable.
-    //let sie = read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE;
-    //write_sie(sie);
+    let sie = read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE;
+    write_sie(sie);
 
     // Now give sup mode access to phys mem.
     // Check 3.7.1 of riscv priv isa manual.
