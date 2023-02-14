@@ -1,8 +1,6 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
-#![feature(pointer_byte_offsets)]
-
 
 use core::panic::PanicInfo;
 
