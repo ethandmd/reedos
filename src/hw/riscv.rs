@@ -1,8 +1,5 @@
 //! Rust wrappers around RISC-V routines
-// All referenced from xv6-riscv/kernel/riscv.h
-
 use core::arch::asm;
-use crate::trap;
 
 // MPP := Machine previous protection mode.
 pub const MSTATUS_MPP_MASK: u64 = 3 << 11; // Mask for bit tricks
@@ -55,6 +52,14 @@ pub fn write_mstatus(status: u64) {
     unsafe {
         asm!("csrw mstatus, {}", in(reg) status);
     }
+}
+
+pub fn read_mcause() -> u64 {
+    let cause: u64;
+    unsafe {
+        asm!("csrr {}, mcause", out(reg) cause);
+    }
+    cause
 }
 
 // Set mepc := machine exception program counter.
