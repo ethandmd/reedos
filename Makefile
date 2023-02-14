@@ -14,9 +14,9 @@ docs:
 
 run: build
 	echo "Ctrl-a x to quit qemu"
-	qemu-system-riscv64 \
+	qemu-system-riscv64 -s -S \
 		-machine virt \
-		-smp 2 \
+		-smp 1 \
 		-m 2G \
 		-bios none \
 		-nographic \
