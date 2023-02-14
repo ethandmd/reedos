@@ -91,7 +91,14 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
+<<<<<<< HEAD
         trap::init();
+=======
+	unsafe {
+	    alloc::init();
+	}
+	log!(Info, "Initalized the allocator.");
+>>>>>>> 437c3bb (Initialize and it runs. Now how will we test it :thinking:)
     } else {
         trap::init();
     }
