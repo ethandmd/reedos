@@ -245,7 +245,7 @@ pub fn write_mscratch(scratch: usize) {
     }
 }
 
-pub fn write_mtvec(addr: trap::__HANDLER) {
+pub fn write_mtvec(addr: usize) {
     unsafe {
         asm!("csrw mtvec, {}", in(reg) addr);
     }
@@ -259,7 +259,7 @@ pub fn read_mtvec() -> usize {
     addr
 }
 
-pub fn write_stvec(addr: trap::__HANDLER) {
+pub fn write_stvec(addr: usize) {
     unsafe {
         asm!("csrw stvec, {}", in(reg) addr);
     }

@@ -16,8 +16,8 @@ pub fn timerinit() {
     clint.bump_mtimecmp(interval);
 
     // Set the machine trap vector to hold fn ptr to timervec.
-    let timervec_fn = timervec;
-    write_mtvec(timervec_fn);
+    let timervec_fn = timervec as *const ();
+    write_mtvec(timervec_fn as usize);
 
     // Enable machine mode interrupts with mstatus reg.
     let mstatus = read_mstatus() | MSTATUS_MIE;
@@ -29,15 +29,13 @@ pub fn timerinit() {
 
     #[cfg(debug_assertions)] {
         let hartid = riscv::read_tp();
-        log!(Debug, " HART{}, timervec_fn: {}, mtvec reg: {}", hartid, timervec_fn as usize, read_mtvec());
-        log!(Debug, " HART{}, mstatus: {}, mstatus reg: {}", hartid, mstatus, read_mstatus());
-        log!(Debug, " HART{}, mie: {}, mie reg: {}", hartid, mie, read_mie());
+        log!(Debug, " HART{}, timervec_fn: {:#02x}, mtvec reg: {:#02x}", hartid, timervec_fn as usize, read_mtvec());
+        log!(Debug, " HART{}, mie: {:#02x}, mie reg: {:#02x}", hartid, mie, read_mie());
 
     }
 }
 
-pub unsafe extern "C" fn timervec() {
-    //pub fn timervec_fn() -> fn() {
+unsafe extern "C" fn timervec() {
     // xv6-riscv/kernel/kernelvec.S
     //
     // 1. Store function arguments (a0-7)
