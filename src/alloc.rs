@@ -9,16 +9,20 @@
 
 use core::alloc::*;
 use core::mem::size_of;
+use core::cell::UnsafeCell;
 
-use core::iter::IntoIterator;
+// use core::iter::IntoIterator;
 use core::cmp::max;
 use core::ptr::null_mut;
 
+use crate::lock::mutex::*;
 
 extern "C" {
     static _heap_start: usize;
     static _heap_end: usize;
 }
+
+static mut ALLOCATOR: Mutex<Kalloc> = Mutex::new(Kalloc::new(null_mut::<u8>()));
 
 fn out_of_bounds(addr: usize) -> bool {
     unsafe {
@@ -26,11 +30,15 @@ fn out_of_bounds(addr: usize) -> bool {
     }
 }
 
+pub unsafe fn init() {
+    ALLOCATOR = Mutex::new(Kalloc::new(_heap_start as *mut u8));
+}
+
 /// store the overhead info for a chunk
 ///
 /// This is directly before the chunk allocated for user memory that
 /// it corresponds to
-struct KChunkHeader {
+pub struct KChunkHeader {
     size: usize,		// includes this header
     layout: Layout,
     is_free: bool,
@@ -133,7 +141,7 @@ impl KChunkHeader {
     }
 }
 
-struct KChunkIter {
+pub struct KChunkIter {
     current: Option<*mut KChunkHeader>,
 }
 
@@ -156,37 +164,39 @@ impl Iterator for KChunkIter {
 }
 
 pub struct Kalloc {
-    pool: *mut KChunkHeader, 		// size defined by linker script, see _heap_size
+    pool: UnsafeCell<*mut KChunkHeader>,
 }
+
+unsafe impl Sync for Kalloc {}
 
 // gives *MUTABLE REFERENCES*
-impl IntoIterator for Kalloc {
-    type Item = *mut KChunkHeader;
-    type IntoIter = KChunkIter;
+// impl IntoIterator for Kalloc {
+//     type Item = *mut KChunkHeader;
+//     type IntoIter = KChunkIter;
 
-    fn into_iter(self) -> Self::IntoIter {
-	KChunkIter {
-	    current: Some(self.pool),
-	}
-    }
-}
+//     fn into_iter(self) -> Self::IntoIter {
+// 	unsafe {
+// 	    KChunkIter {
+// 		current: Some(*self.pool.get()),
+// 	    }
+// 	}
+//     }
+// }
 
 impl Kalloc {
-    fn new(pool: *mut u8) -> Self {
-	Kalloc {
-	    pool: pool as *mut KChunkHeader,
-	}
-    }
+    
 
-    fn iter(&self) -> KChunkIter {
-	KChunkIter {
-	    current: Some(self.pool),
+    const fn new(pool: *mut u8) -> Self {
+	Kalloc {
+	    pool: UnsafeCell::new(pool as *mut KChunkHeader),
 	}
     }
     
-    fn mut_iter(&mut self) -> KChunkIter {
-	KChunkIter {
-	    current: Some(self.pool),
+    fn mut_iter(&self) -> KChunkIter {
+	unsafe {
+	    KChunkIter {
+		current: Some(*self.pool.get()),
+	    }
 	}
     }
 
@@ -224,7 +234,7 @@ unsafe impl GlobalAlloc for Kalloc {
 	let internal_align = max(layout.align(), size_of::<KChunkHeader>());
 	let internal_size = Kalloc::adjust_size_with_align(layout.size(), &internal_align);
 
-	for cptr in *self {
+	for cptr in self.mut_iter() {
 	    let chunk: &mut KChunkHeader = &mut *cptr;
 	    let padded_size = chunk.size_with_padding();
 	    if padded_size >= internal_size && chunk.is_free() {
@@ -256,7 +266,7 @@ unsafe impl GlobalAlloc for Kalloc {
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
 	let mut previous: Option<*mut KChunkHeader> = None;
-	for cptr in *self {
+	for cptr in self.mut_iter() {
 	    let chunk: &mut KChunkHeader = &mut *cptr;
 	    if (*chunk).matches_layout(&layout) && (*chunk).user_data() == ptr {
 		// this is it
@@ -281,11 +291,11 @@ unsafe impl GlobalAlloc for Kalloc {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-	let mut previous: Option<*mut KChunkHeader> = None;
+	let previous: Option<*mut KChunkHeader> = None;
 	let internal_align = max(layout.align(), size_of::<KChunkHeader>());
 	let internal_size = Kalloc::adjust_size_with_align(new_size, &internal_align);
 	
-	for cptr in *self {
+	for cptr in self.mut_iter() {
 	    let chunk = &mut *cptr;
 	    if chunk.matches_layout(&layout) && (*chunk).user_data() == ptr {
 		// this is it
@@ -343,4 +353,3 @@ unsafe impl GlobalAlloc for Kalloc {
 	panic!("Realloc Failure: Chunk not found. Have you changed your pointer or layout?")
     }
 }
-
