@@ -4,7 +4,6 @@
 #![feature(pointer_byte_offsets)]
 
 use core::panic::PanicInfo;
-use core::arch::asm;
 
 pub mod entry;
 #[macro_use]
@@ -91,9 +90,5 @@ fn main() -> ! {
         trap::init();
     }
 
-    loop {
-        //unsafe {
-        //    asm!("wfi");
-        //}
-    }
+    loop {}
 }

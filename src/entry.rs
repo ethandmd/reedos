@@ -15,6 +15,7 @@ use core::arch::global_asm;
 
 global_asm!(
     r#"
+    .option norvc
     .section .text
     .global _entry
     .extern _start

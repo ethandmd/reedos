@@ -22,8 +22,8 @@ gdb-start: build
 	echo "Ctrl-a x to quit qemu"
 	qemu-system-riscv64 -s -S \
 		-machine virt \
-		-smp 1 \
-		-m 2G \
+		-smp 2 \
+		-m 128M \
 		-bios none \
 		-nographic \
 		-kernel reedos.ELF
@@ -33,7 +33,7 @@ start: build
 	qemu-system-riscv64 \
 		-machine virt \
 		-smp 2 \
-		-m 2G \
+		-m 128M \
 		-bios none \
 		-nographic \
 		-kernel reedos.ELF

@@ -17,7 +17,6 @@ fn handler() {
 }
 
 fn mbump() {
-    let hartid = riscv::read_mhartid();
     clint::set_mtimecmp(10_000_000);
     uart::Uart::new().lock().put(". ".bytes().next().unwrap());
 }

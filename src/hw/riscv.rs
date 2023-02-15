@@ -260,7 +260,10 @@ pub fn write_mscratch(scratch: usize) {
 
 pub fn write_mtvec(addr: usize) {
     unsafe {
-        asm!("csrw mtvec, {}", in(reg) addr);
+        asm!(r#"
+        .option norvc
+        csrw mtvec, {} 
+        "#, in(reg) addr);
     }
 }
 
@@ -274,7 +277,10 @@ pub fn read_mtvec() -> usize {
 
 pub fn write_stvec(addr: usize) {
     unsafe {
-        asm!("csrw stvec, {}", in(reg) addr);
+        asm!(r#"
+        .option norvc
+        csrw stvec, {}
+        "#, in(reg) addr);
     }
 }
 
