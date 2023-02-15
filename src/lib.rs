@@ -4,6 +4,7 @@
 #![feature(pointer_byte_offsets)]
 
 use core::panic::PanicInfo;
+use core::arch::asm;
 
 pub mod entry;
 #[macro_use]
@@ -85,10 +86,14 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-        write_stvec(trap::__strapvec as usize);
+        trap::init();
     } else {
-        write_stvec(trap::__strapvec as usize);
+        trap::init();
     }
 
-    loop {}
+    loop {
+        //unsafe {
+        //    asm!("wfi");
+        //}
+    }
 }
