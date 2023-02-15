@@ -12,11 +12,27 @@ lint:
 docs:
 	cargo doc --open
 
-run: build
+ifeq ($(DEBUG),1)
+run: gdb-start
+else
+run: start
+endif
+
+gdb-start: build
 	echo "Ctrl-a x to quit qemu"
 	qemu-system-riscv64 -s -S \
 		-machine virt \
 		-smp 1 \
+		-m 2G \
+		-bios none \
+		-nographic \
+		-kernel reedos.ELF
+
+start: build
+	echo "Ctrl-a x to quit qemu"
+	qemu-system-riscv64 \
+		-machine virt \
+		-smp 2 \
 		-m 2G \
 		-bios none \
 		-nographic \
