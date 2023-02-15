@@ -1,5 +1,5 @@
 use core::arch::global_asm;
-use crate::device::uart;
+//use crate::device::uart;
 use crate::device::clint;
 use crate::hw::riscv;
 
@@ -17,8 +17,9 @@ fn handler() {
 }
 
 fn mbump() {
+    println!("{}; mcause: {:#02x}", riscv::read_mhartid(), riscv::read_mcause());
     clint::set_mtimecmp(10_000_000);
-    uart::Uart::new().lock().put(". ".bytes().next().unwrap());
+    //uart::Uart::new().lock().put(". ".bytes().next().unwrap());
 }
 
 global_asm!(
