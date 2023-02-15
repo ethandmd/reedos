@@ -2,6 +2,15 @@
 use crate::hw::param;
 use crate::hw::riscv;
 
+pub fn read_mtime() -> u64 {
+    let base = param::CLINT_BASE as *mut u64;
+    let mtime: u64;
+    unsafe {
+        mtime = base.byte_add(0xBFF8).read_volatile();
+    }
+    mtime
+}
+
 // mtimecmp reg is at base + 0x4000
 // mtime reg is base + 0xbff8
 pub fn set_mtimecmp(interval: u64) {
