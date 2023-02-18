@@ -1,7 +1,7 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
-#![feature(pointer_byte_offsets)]
+#![feature(pointer_byte_offsets, error_in_core)]
 
 
 use core::panic::PanicInfo;
@@ -88,7 +88,7 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-	log!(Info, "Initalized the allocator.");
+	    log!(Info, "Initalized the allocator.");
     } else {
     }
 
