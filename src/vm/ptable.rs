@@ -18,7 +18,7 @@ struct PTEntry(usize);
 
 #[repr(C)]
 struct PageTable {
-    base: *const usize,
+    base: PhysAddress,
 }
 
 struct VmError;
@@ -40,6 +40,13 @@ impl From<PTEntry> for PhysAddress {
     }
 }
 
+impl PhysAddress {
+    unsafe fn offset(&self, index: usize) -> usize {
+        let addr = self.0 as *mut usize;
+        addr.byte_add(index * 8).read_volatile()
+    }
+}
+
 impl From<usize> for PTEntry {
     fn from(ptr: usize) -> Self {
         PTEntry(ptr)
@@ -49,15 +56,15 @@ impl From<usize> for PTEntry {
 impl From<PTEntry> for PageTable {
     fn from(pte: PTEntry) -> Self {
         let addr = PhysAddress::from(pte);
-        PageTable { base: addr.0 as *const usize }
+        PageTable { base: addr }
     }
 }
 
 impl PageTable {
-    fn index(&self, offset: usize) -> PTEntry {
-        assert!(offset < PTE_TOP);
+    fn index(&self, index: usize) -> PTEntry {
+        assert!(index < PTE_TOP);
         unsafe {
-            PTEntry::from(self.base.byte_add(offset).read_volatile())
+            PTEntry::from(self.base.offset(index))
         }
     }
 }
