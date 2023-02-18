@@ -16,12 +16,12 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod device;
+pub mod vm;
+pub mod alloc;
 
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
-
-pub mod alloc;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -92,11 +92,14 @@ fn main() -> ! {
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
 <<<<<<< HEAD
+<<<<<<< HEAD
         trap::init();
 =======
 	unsafe {
 	    alloc::init();
 	}
+=======
+>>>>>>> 37e5d5c (Remove alloc::init from _start)
 	log!(Info, "Initalized the allocator.");
 >>>>>>> 437c3bb (Initialize and it runs. Now how will we test it :thinking:)
     } else {
