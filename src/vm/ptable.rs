@@ -7,29 +7,26 @@ const PTE_TOP: usize = 512; // 4Kb / 8 byte PTEs = 512 PTEs / page!
 
 #[derive(PartialOrd, PartialEq)]
 #[repr(C)]
-struct VirtAddress(usize);
+struct VirtAddress(usize); // Top 3 * 9 bits for VPN[i], bottom 12 are page offset.
 
 #[repr(C)]
-struct PhysAddress(usize);
+struct PhysAddress(usize); // Top 44 bits are PPN[i], bottom 12 are PO.
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-struct PTEntry(usize);
+struct PTEntry(usize); // Top 10 bits reserved, next 44 PPN[i], bottom 10 flags.
 
 #[repr(C)]
 struct PageTable {
-    base: PhysAddress,
+    base: PhysAddress, // Page Table located at base address.
 }
 
-struct VmError;
+struct VmError; // Custom error type, may remove later.
 
 impl VirtAddress {
+    // Get the VPN by level for offset into page table
     fn vpn(&self, level: usize) -> usize {
         self.0 >> (12 + 9*level) & 0x1FF
-    }
-
-    fn off(&self) -> usize {
-        self.0 & 0xFFF
     }
 }
 
@@ -41,6 +38,7 @@ impl From<PTEntry> for PhysAddress {
 }
 
 impl PhysAddress {
+    // Read the memory at location self + index * 8 bytes
     unsafe fn offset(&self, index: usize) -> usize {
         let addr = self.0 as *mut usize;
         addr.byte_add(index * 8).read_volatile()
@@ -61,6 +59,7 @@ impl From<PTEntry> for PageTable {
 }
 
 impl PageTable {
+    // Get PTE at index bytes from base PhysAddr of this page table.
     fn index(&self, index: usize) -> PTEntry {
         assert!(index < PTE_TOP);
         unsafe {
@@ -70,6 +69,7 @@ impl PageTable {
 }
 
 impl PTEntry {
+    // A lot of ways to skin this cat. We'll see how this ages.
     fn flag(&self, shift: u8) -> bool { self.0 & (1 << shift) != 0 }
     fn valid(&self) -> bool { self.flag(0) }
     fn read(&self) -> bool { self.flag(1) }
@@ -94,6 +94,8 @@ fn walk(mut pt: PageTable, va: VirtAddress) -> Option<PTEntry> {
             false => {return None }
         };
     }
+    // Last, return PTE leaf.
+    // Caller's responsibility to check flags.
     let idx = va.vpn(0);
     Some(pt.index(idx))
 }
