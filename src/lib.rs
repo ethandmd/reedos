@@ -1,6 +1,8 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
+#![feature(pointer_byte_offsets)]
+
 
 use core::panic::PanicInfo;
 
@@ -11,6 +13,8 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod device;
+pub mod vm;
+pub mod alloc;
 
 use crate::hw::riscv::*;
 use crate::hw::param;
@@ -84,6 +88,7 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
+	log!(Info, "Initalized the allocator.");
     } else {
     }
 
