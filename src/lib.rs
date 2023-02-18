@@ -13,12 +13,12 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod device;
+pub mod vm;
+pub mod alloc;
 
 use crate::hw::riscv::*;
 use crate::hw::param;
 use crate::device::uart;
-
-pub mod alloc;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -88,9 +88,6 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-	unsafe {
-	    alloc::init();
-	}
 	log!(Info, "Initalized the allocator.");
     } else {
     }
