@@ -88,6 +88,7 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
+        _ = vm::init();
 	    log!(Info, "Initalized the allocator.");
     } else {
     }
