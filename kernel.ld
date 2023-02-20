@@ -11,27 +11,25 @@ SECTIONS
   .text : {
       *(.text .text.*)
       . = ALIGN(0x1000);
-  } /* >ram AT>ram :text */
+      PROVIDE(__text_end = .);
+  }
   
-  PROVIDE(_global_pointer = .);
+  PROVIDE(__global_pointer = .);
   
   .rodata : {
       *(.srodata .srodata.*)
       *(.rodata .rodata.*)
-  } /* >ram AT>ram :text */
-
+  } 
   .data : {
       . = ALIGN(4096);
       *(.sdata .sdata.*)
       *(.data .data.*)
-  } /* >ram AT>ram :data */
-
+  }
   .bss : {
       *(.sbss .sbss.*)
       *(.bss .bss.*)
   
-  } /* >ram AT>ram :bss */
-
+  }
   PROVIDE(__bss_end = .);
   PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram)); 
 }
