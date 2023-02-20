@@ -25,7 +25,7 @@ global_asm!(
     .option push
     .option norelax
         # Linker position data relative to gp
-        la gp, _global_pointer
+        la gp, __global_pointer
     .option pop
         # Setup early trap vector
         # for early boot oopses.
