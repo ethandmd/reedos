@@ -1,5 +1,5 @@
 use crate::alloc::Kalloc;
-use crate::hw::riscv::read_mhartid;
+use crate::hw::riscv::read_tp;
 use crate::lock::mutex::Mutex;
 use crate::param::{NHART, PAGE_SIZE};
 
@@ -56,8 +56,8 @@ impl Kpools {
     }
 
     /// Either gives you a pointer to a new page (zeroed), or null.
-    pub fn palloc(&mut self) -> *mut u8 {
-        let id = read_mhartid();
+    pub fn palloc(&mut self) -> Option<*mut u8> {
+        let id = read_tp();
         let page_req: Layout = Layout::from_size_align(PAGE_SIZE, PAGE_SIZE).unwrap();
 
         // try local pool first
@@ -66,7 +66,7 @@ impl Kpools {
             let ret = (*local).alloc(page_req);
             if ret != null_mut::<u8>() {
                 ret.write_bytes(0, PAGE_SIZE);
-                return ret;
+                return Some(ret);
                 // drops local mutex
             } else {
                 drop(local); // we don't need it, this is faster. Could wait for the scope to drop
@@ -74,10 +74,10 @@ impl Kpools {
                 let ret = (*global_pool).alloc(page_req);
                 if ret != null_mut::<u8>() {
                     ret.write_bytes(0, PAGE_SIZE);
-                    return ret;
+                    return Some(ret);
                     // drops global
                 } else {
-                    return null_mut::<u8>();
+                    return None //null_mut::<u8>();
                 }
             }
         }
