@@ -2,7 +2,7 @@
 // Qemu riscv virt machine memory locations you want to know:
 // https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c
 //
-//static const MemMapEntry virt_memmap[] = {
+//static static MemMapEntry virt_memmap[] = {
 //    [VIRT_DEBUG] =        {        0x0,         0x100 },
 //    [VIRT_MROM] =         {     0x1000,        0xf000 },
 //    [VIRT_TEST] =         {   0x100000,        0x1000 },
@@ -25,18 +25,34 @@
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
 //}
 
+extern {
+    #[link_name = "__text_end"]
+    pub static TEXT_END: usize;
+
+    #[link_name = "__bss_end"]
+    pub static BSS_END: usize;
+
+    #[link_name = "__memory_end"]
+    pub static DRAM_END: usize;
+}
 // Memlayout params
-pub const UART_BASE: usize = 0x10000000;
 pub const CLINT_BASE: usize = 0x2000000;
-pub const PAGE_SIZE: usize = 4096;
+pub const UART_BASE: usize = 0x10000000;
+pub const DRAM_BASE: usize = 0x80000000;
+
+//pub static TEXT_END: usize = unsafe { __text_end };
+//pub static BSS_END: usize = unsafe { __bss_end };
+//pub static DRAM_END: usize = unsafe { __memory_end };
+
+pub static PAGE_SIZE: usize = 4096;
 
 // Run parameters
 pub const NHART: usize = 2;
 
 
 // Unnecessary.
-pub const BANNER: &'static str = r#"
-Mellow Swirled to
+pub static BANNER: &'static str = r#"
+Mellow Swirled,
                        __
    ________  ___  ____/ /___  _____
   / ___/ _ \/ _ \/ __  / __ \/ ___/
