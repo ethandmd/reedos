@@ -2,6 +2,7 @@
 // PTE size = 8 bytes
 use core::assert;
 use crate::vm::palloc::Kpools;
+use crate::hw::param::*;
 
 const VA_TOP: usize = 1 << (27 + 12); // 2^27 VPN + 12 Offset
 const PTE_TOP: usize = 512; // 4Kb / 8 byte PTEs = 512 PTEs / page!
@@ -31,6 +32,8 @@ struct PageTable {
     base: PhysAddress, // Page Table located at base address.
 }
 
+struct SATPAddress(usize);
+
 struct VmError; // Custom error type, may remove later.
 
 impl From<usize> for VirtAddress {
@@ -57,6 +60,12 @@ impl From<PTEntry> for PhysAddress {
     fn from(pte: PTEntry) -> Self {
         // 10-bit reserved / flag, 12-bit offset
         PhysAddress((pte.0 >> 10) << 12)
+    }
+}
+
+impl From<usize> for PhysAddress {
+    fn from(ptr: usize) -> Self {
+        PhysAddress(ptr)
     }
 }
 
@@ -92,8 +101,7 @@ impl PTEntry {
             base.write_volatile(pte.0);
         }
     }
-}
-            
+}           
 
 impl From<PTEntry> for PageTable {
     fn from(pte: PTEntry) -> Self {
@@ -129,6 +137,12 @@ impl PTEntry {
     fn dirty(&self) -> bool { self.flag(PTE_DIRTY) }
 }
 
+impl From<usize> for SATPAddress {
+    fn from(ptr: usize) -> Self {
+        SATPAddress( (1 << 63) | ( ptr >> 12)) // (MODE = 8, for Sv39) | PPN without offset)
+    }
+}
+
 // Get the address of the PTE for va given the page table pt.
 // Returns Either PTE or None, callers responsibility to use PTE 
 // or allocate a new page.
@@ -149,29 +163,42 @@ fn walk(pt: &PageTable, va: VirtAddress) -> Option<PTEntry> {
     Some(table.index(idx))
 }
 
-fn map(kpool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, mut pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
+// TODO: Implement VmError
+fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, mut pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
     // Round down to next page aligned boundary (multiple of pg size).
     let mut start = va.0 & !(4096 - 1);
     let end = (va.0 + size) & !(4096 - 1);
 
     while start < end {
+        // 1. Walk page table and find pte.
         match walk(pt, VirtAddress::from(start)) {
+            // 2. Write PTE and set it as valid
             Some(pte) => { pte.set(pa.to_pte(flag | PTE_VALID)); }
+            // 3. Allocate a new page and do step 2. or fail.
             None => {
-                // Allocate a new page
-                match kpool.palloc() {
+                match pool.palloc() {
                     Some(ptr) => { PTEntry::from(ptr as usize).set(pa.to_pte(flag | PTE_VALID)); },
                     None => { return Err(VmError); },
                 };
             }
         };
+        // 4. Increase addresses by 1 page per map() iteration.
         start += 4096;
         pa = pa + 4096;
     }
     Ok(())
 }
 
+// Initialize kernel page table 
+pub fn kpage_init(pool: &mut Kpools) -> usize {
+    let base = pool.palloc().unwrap() as usize;
+    let mut kpage_table = PageTable { base: PhysAddress::from(base) };
 
+    unsafe {
+        _ = page_map(pool, &mut kpage_table, VirtAddress::from(UART_BASE), PhysAddress::from(UART_BASE), PAGE_SIZE, PTE_READ | PTE_WRITE);
+        _ = page_map(pool, &mut kpage_table, VirtAddress::from(DRAM_BASE), PhysAddress::from(DRAM_BASE), TEXT_END - DRAM_BASE, PTE_READ | PTE_EXEC);
+        _ = page_map(pool, &mut kpage_table, VirtAddress::from(TEXT_END), PhysAddress::from(TEXT_END), DRAM_END - TEXT_END, PTE_READ | PTE_WRITE);
+    }
 
-
-
+    kpage_table.base.0
+}
