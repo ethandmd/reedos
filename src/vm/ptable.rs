@@ -3,6 +3,7 @@
 use core::assert;
 use crate::vm::palloc::Kpools;
 use crate::hw::param::*;
+use crate::hw::riscv::write_satp;
 
 const VA_TOP: usize = 1 << (27 + 12); // 2^27 VPN + 12 Offset
 const PTE_TOP: usize = 512; // 4Kb / 8 byte PTEs = 512 PTEs / page!
@@ -32,7 +33,7 @@ struct PageTable {
     base: PhysAddress, // Page Table located at base address.
 }
 
-struct SATPAddress(usize);
+pub struct SATPAddress(usize);
 
 struct VmError; // Custom error type, may remove later.
 
@@ -190,15 +191,39 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, mut pa: Phys
 }
 
 // Initialize kernel page table 
-pub fn kpage_init(pool: &mut Kpools) -> usize {
+pub fn kpage_init(pool: &mut Kpools) {
     let base = pool.palloc().unwrap() as usize;
     let mut kpage_table = PageTable { base: PhysAddress::from(base) };
 
     unsafe {
-        _ = page_map(pool, &mut kpage_table, VirtAddress::from(UART_BASE), PhysAddress::from(UART_BASE), PAGE_SIZE, PTE_READ | PTE_WRITE);
-        _ = page_map(pool, &mut kpage_table, VirtAddress::from(DRAM_BASE), PhysAddress::from(DRAM_BASE), TEXT_END - DRAM_BASE, PTE_READ | PTE_EXEC);
-        _ = page_map(pool, &mut kpage_table, VirtAddress::from(TEXT_END), PhysAddress::from(TEXT_END), DRAM_END - TEXT_END, PTE_READ | PTE_WRITE);
+        _ = page_map(
+            pool, 
+            &mut kpage_table, 
+            VirtAddress::from(UART_BASE), 
+            PhysAddress::from(UART_BASE), 
+            PAGE_SIZE, 
+            PTE_READ | PTE_WRITE);
+
+        _ = page_map(
+            pool, 
+            &mut kpage_table, 
+            VirtAddress::from(DRAM_BASE), 
+            PhysAddress::from(DRAM_BASE), 
+            TEXT_END - DRAM_BASE, 
+            PTE_READ | PTE_EXEC);
+
+        _ = page_map(
+            pool, 
+            &mut kpage_table, 
+            VirtAddress::from(TEXT_END), 
+            PhysAddress::from(TEXT_END), 
+            DRAM_END - TEXT_END, 
+            PTE_READ | PTE_WRITE);
     }
 
-    kpage_table.base.0
+    write_satp(SATPAddress::from(kpage_table.base.0).0 as u64);
 }
+
+
+
+
