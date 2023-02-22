@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 use core::arch::global_asm;
 //use crate::device::uart;
 use crate::device::clint;
@@ -129,3 +130,6 @@ __mtrapvec:
 //     sret
 //     "#, sym handler
 //     );
+=======
+pub type __HANDLER = unsafe extern "C" fn();
+>>>>>>> 6e119cd (rebase 7 from main)

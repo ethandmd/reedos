@@ -5,8 +5,11 @@
 <<<<<<< HEAD:src/lib.rs
 =======
 
+<<<<<<< HEAD
 >>>>>>> 52fadae (Almost working. GlobalAlloc trait causing mut/not-mut issues):src/main.rs
 
+=======
+>>>>>>> 6e119cd (rebase 7 from main)
 use core::panic::PanicInfo;
 
 pub mod entry;
@@ -93,6 +96,7 @@ fn main() -> ! {
         log!(Info, "Bootstrapping on hart0...");
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         trap::init();
 =======
 	unsafe {
@@ -102,6 +106,8 @@ fn main() -> ! {
 >>>>>>> 37e5d5c (Remove alloc::init from _start)
 	log!(Info, "Initalized the allocator.");
 >>>>>>> 437c3bb (Initialize and it runs. Now how will we test it :thinking:)
+=======
+>>>>>>> 6e119cd (rebase 7 from main)
     } else {
         trap::init();
     }
