@@ -7,16 +7,15 @@
 /// and the linker lays those out first. This entry function's job is to set up the
 /// kernel stack so we have some space to work. Refer to src/param.rs for general
 /// memory layout. The kernel stack depends on the number of harts on the h/w (or qemu).
-/// We mostly reference this from `xv6-riscv/kernel/entry.S` and follow their memory layout.
-/// TODO: We have not yet implemented the trampoline mechanism.
-/// But notice the use of inline `global_asm!`, and that the `_start` function is 
-/// visible to this script. 
+/// We mostly reference this from `xv6-riscv/kernel/entry.S`.
+
 // Learned about this use of global_asm! from
 // https://dev-doc.rust-lang.org/beta/unstable-book/library-features/global-asm.html
 use core::arch::global_asm;
 
 global_asm!(
     r#"
+    .option norvc
     .section .text
     .global _entry
     .extern _start
@@ -27,11 +26,6 @@ global_asm!(
         # Linker position data relative to gp
         la gp, __global_pointer
     .option pop
-        # Setup early trap vector
-        # for early boot oopses.
-        la t0, early_trap_vector
-        csrw mtvec, t0
-
         # Set up stack per # of hart ids
         li t0, 0x0
         li t0, 0x1000 # = 4096
@@ -50,15 +44,7 @@ global_asm!(
         # Jump to _start in src/main.rs
         call _start
     spin:
-        # wfi
-        j spin
-
-    early_trap_vector:
-        .cfi_startproc # Start of fn frame?
-        csrr t0, mcause # Get trap cause
-        csrr t1, mepc # get pc
-        csrr t2, mtval 
-        j early_trap_vector
-        .cfi_endproc
+        wfi
+        #j spin
     "#
 );
