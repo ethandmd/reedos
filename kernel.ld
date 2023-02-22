@@ -10,7 +10,6 @@ SECTIONS
 {
   .text : {
       *(.text .text.*)
-      . = ALIGN(0x1000);
       PROVIDE(__text_end = .);
   }
   
@@ -21,14 +20,13 @@ SECTIONS
       *(.rodata .rodata.*)
   } 
   .data : {
-      . = ALIGN(4096);
       *(.sdata .sdata.*)
       *(.data .data.*)
   }
   .bss : {
       *(.sbss .sbss.*)
       *(.bss .bss.*)
-  
+      . = ALIGN(0x1000);
   }
   PROVIDE(__bss_end = .);
   PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram)); 
