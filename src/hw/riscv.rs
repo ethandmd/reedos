@@ -7,7 +7,7 @@ pub const MSTATUS_MPP_M: u64 = 3 << 11; // Machine
 pub const MSTATUS_MPP_S: u64 = 1 << 11; // Supervisor
 pub const MSTATUS_MPP_U: u64 = 0 << 11; // User
 pub const MSTATUS_MIE: u64 = 1 << 3; // machine-mode interrupt enable.
-
+pub const MSTATUS_TIMER: u64 = (1 << 63) | (7); // mcause for machine mode timer.
 // sstatus := Supervisor status reg.
 pub const SSTATUS_SPP: u64 = 1 << 8;  // Previous mode, 1=Supervisor, 0=User
 pub const SSTATUS_SPIE: u64 = 1 << 5; // Supervisor Previous Interrupt Enable
