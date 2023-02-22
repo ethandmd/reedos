@@ -1,8 +1,5 @@
 //! Rust wrappers around RISC-V routines
-// All referenced from xv6-riscv/kernel/riscv.h
-
 use core::arch::asm;
-use crate::trap;
 
 // MPP := Machine previous protection mode.
 pub const MSTATUS_MPP_MASK: u64 = 3 << 11; // Mask for bit tricks
@@ -10,7 +7,7 @@ pub const MSTATUS_MPP_M: u64 = 3 << 11; // Machine
 pub const MSTATUS_MPP_S: u64 = 1 << 11; // Supervisor
 pub const MSTATUS_MPP_U: u64 = 0 << 11; // User
 pub const MSTATUS_MIE: u64 = 1 << 3; // machine-mode interrupt enable.
-
+pub const MSTATUS_TIMER: u64 = (1 << 63) | (7); // mcause for machine mode timer.
 // sstatus := Supervisor status reg.
 pub const SSTATUS_SPP: u64 = 1 << 8;  // Previous mode, 1=Supervisor, 0=User
 pub const SSTATUS_SPIE: u64 = 1 << 5; // Supervisor Previous Interrupt Enable
@@ -27,29 +24,6 @@ pub const MIE_MSIE: u64 = 1 << 3;  // software
 pub const SIE_SEIE: u64 = 1 << 9; // external
 pub const SIE_STIE: u64 = 1 << 5; // timer
 pub const SIE_SSIE: u64 = 1 << 1; // software
-
-// CLINT := Core local interruptor (where the timer is).
-// CLINT_BASE: usize = 0x2000000; // clint is at this location in memlayout.
-// xv6-riscv C code:
-// #define CLINT_MTIMECMP(hartid) (CLINT + 0x4000 + 8*(hartid))
-// #define  CLINT_MTIME (CLINT + 0xBFF8) // cycles since boot.
-// int interval = 1000000; // cycles; about 1/10th second in qemu.
-// *(uint64*)CLINT_MTIMECMP(id) = *(uint64*)CLINT_MTIME + interval;
-
-// Need to write a value to the CLINT memory location.
-// This is mmio, as such there are safety concerns:
-//      https://doc.rust-lang.org/std/ptr/fn.write_volatile.html
-// 
-// Generate a machine lvl interrupt by setting mtime to be >= mtimecmp.
-pub fn write_clint(hartid: u64, base: usize, interval: u64) {
-    // Ok, treat base addr as a pointer we can write to.
-    let base = (base + 0x4000 + 8 * (hartid as usize)) as *mut u64;
-    unsafe {
-        base.write_volatile(base as u64 + 0xBFF8 + interval);
-    }
-}
-
-
 
 // Return id of current hart.
 // the "m" in "mstatus" means machine mode.
@@ -78,6 +52,22 @@ pub fn write_mstatus(status: u64) {
     unsafe {
         asm!("csrw mstatus, {}", in(reg) status);
     }
+}
+
+pub fn read_mcause() -> u64 {
+    let cause: u64;
+    unsafe {
+        asm!("csrr {}, mcause", out(reg) cause);
+    }
+    cause
+}
+
+pub fn read_scause() -> u64 {
+    let cause: u64;
+    unsafe {
+        asm!("csrr {}, scause", out(reg) cause);
+    }
+    cause
 }
 
 // Set mepc := machine exception program counter.
@@ -268,9 +258,12 @@ pub fn write_mscratch(scratch: usize) {
     }
 }
 
-pub fn write_mtvec(addr: trap::__HANDLER) {
+pub fn write_mtvec(addr: usize) {
     unsafe {
-        asm!("csrw mtvec, {}", in(reg) addr);
+        asm!(r#"
+        .option norvc
+        csrw mtvec, {} 
+        "#, in(reg) addr);
     }
 }
 
@@ -282,9 +275,12 @@ pub fn read_mtvec() -> usize {
     addr
 }
 
-pub fn write_stvec(addr: trap::__HANDLER) {
+pub fn write_stvec(addr: usize) {
     unsafe {
-        asm!("csrw stvec, {}", in(reg) addr);
+        asm!(r#"
+        .option norvc
+        csrw stvec, {}
+        "#, in(reg) addr);
     }
 }
 

@@ -3,7 +3,6 @@
 #![no_main]
 #![feature(pointer_byte_offsets)]
 
-
 use core::panic::PanicInfo;
 
 pub mod entry;
@@ -54,8 +53,8 @@ pub extern "C" fn _start() {
     // Delegate trap handlers to kernel in supervisor mode.
     // Write 1's to all bits of register and read back reg
     // to see which positions hold a 1.
-    write_medeleg(0xffffffff);
-    write_mideleg(0xffffffff);
+    write_medeleg(0xffff);
+    write_mideleg(0xffff);
     //Supervisor interrupt enable.
     let sie = read_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE;
     write_sie(sie);
@@ -65,12 +64,12 @@ pub extern "C" fn _start() {
     write_pmpaddr0(0x3fffffffffffff_u64); // RTFM
     write_pmpcfg0(0xf); // 1st 8 bits are pmp0cfg
 
-    // Get interrupts from clock and set mtev handler fn.
-    hw::timerinit();
-
     // Store each hart's hartid in its tp reg for identification.
     let hartid = read_mhartid();
     write_tp(hartid);
+    
+    // Get interrupts from clock and set mtev handler fn.
+    hw::timerinit();
 
     // Now return to sup mode and jump to main().
     call_mret();
@@ -88,8 +87,9 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-	log!(Info, "Initalized the allocator.");
+        trap::init();
     } else {
+        trap::init();
     }
 
     loop {}
