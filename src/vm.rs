@@ -10,7 +10,8 @@ pub fn init() {
     let bss_end = unsafe { BSS_END };
     let mem_end = unsafe { DRAM_END };
     let mut pool = Kpools::new(bss_end, mem_end);
+    log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
-    let kpage_root = kpage_init(&mut pool);
+    kpage_init(&mut pool);
 }
