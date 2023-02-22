@@ -69,7 +69,7 @@ pub extern "C" fn _start() {
     write_tp(hartid);
     
     // Get interrupts from clock and set mtev handler fn.
-    hw::timerinit();
+    // hw::timerinit();
 
     // Now return to sup mode and jump to main().
     call_mret();
@@ -87,9 +87,11 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-        trap::init();
+        let _ = vm::init();
+        log!(Info, "Initialized the allocator.");
+        // trap::init();
     } else {
-        trap::init();
+        // trap::init();
     }
 
     loop {}
