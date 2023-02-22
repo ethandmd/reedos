@@ -2,12 +2,8 @@ pub mod riscv;
 pub mod param;
 
 use riscv::*;
-<<<<<<< HEAD
-use crate::device::clint;
 use crate::trap;
-=======
-use crate::device::clint::Clint;
->>>>>>> 6e119cd (rebase 7 from main)
+use crate::device::clint;
 
 // Sets up the core local interrupt controller on each hart.
 // We set up CLINT per hart before we start bootstrapping so
@@ -18,13 +14,8 @@ pub fn timerinit() {
     clint::set_mtimecmp(interval);
     
     // Set the machine trap vector to hold fn ptr to timervec.
-<<<<<<< HEAD
     let timervec_fn = trap::__mtrapvec;
     write_mtvec(timervec_fn as usize);
-=======
-    let timervec_fn = timervec;
-    write_mtvec(timervec_fn);
->>>>>>> 6e119cd (rebase 7 from main)
 
     // Enable machine mode interrupts with mstatus reg.
     let mut mstatus = read_mstatus(); 

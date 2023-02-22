@@ -2,18 +2,7 @@
 #![no_std]
 #![no_main]
 #![feature(pointer_byte_offsets)]
-<<<<<<< HEAD
-<<<<<<< HEAD:src/lib.rs
-=======
-=======
 
->>>>>>> main
-
-<<<<<<< HEAD
->>>>>>> 52fadae (Almost working. GlobalAlloc trait causing mut/not-mut issues):src/main.rs
-
-=======
->>>>>>> 6e119cd (rebase 7 from main)
 use core::panic::PanicInfo;
 
 pub mod entry;
@@ -98,24 +87,7 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
         trap::init();
-=======
-	unsafe {
-	    alloc::init();
-	}
-=======
->>>>>>> 37e5d5c (Remove alloc::init from _start)
-	log!(Info, "Initalized the allocator.");
->>>>>>> 437c3bb (Initialize and it runs. Now how will we test it :thinking:)
-=======
->>>>>>> 6e119cd (rebase 7 from main)
-=======
-	log!(Info, "Initalized the allocator.");
->>>>>>> main
     } else {
         trap::init();
     }
