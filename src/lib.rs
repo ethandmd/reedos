@@ -2,8 +2,12 @@
 #![no_std]
 #![no_main]
 #![feature(pointer_byte_offsets)]
+<<<<<<< HEAD
 <<<<<<< HEAD:src/lib.rs
 =======
+=======
+
+>>>>>>> main
 
 <<<<<<< HEAD
 >>>>>>> 52fadae (Almost working. GlobalAlloc trait causing mut/not-mut issues):src/main.rs
@@ -97,6 +101,7 @@ fn main() -> ! {
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
         trap::init();
 =======
 	unsafe {
@@ -108,6 +113,9 @@ fn main() -> ! {
 >>>>>>> 437c3bb (Initialize and it runs. Now how will we test it :thinking:)
 =======
 >>>>>>> 6e119cd (rebase 7 from main)
+=======
+	log!(Info, "Initalized the allocator.");
+>>>>>>> main
     } else {
         trap::init();
     }
