@@ -23,11 +23,11 @@ impl Kpools {
     pub fn new(start: usize, end: usize) -> Self {
         assert!(PAGE_SIZE == 1 << 12, "Unexpected page size in Kpools.");
         assert!(
-            start & !(4096 - 1) != 0,
+            start & (4096 - 1) == 0,
             "Kpools managed region start isn't page aligned."
         );
         assert!(
-            end & !(4096 - 1) != 0,
+            end & (4096 - 1) == 0,
             "Kpools managed region end isn't page aligned."
         );
 
