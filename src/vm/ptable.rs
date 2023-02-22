@@ -57,6 +57,12 @@ impl VirtAddress {
     }
 }
 
+impl Clone for VirtAddress {
+    fn clone(&self) -> Self {
+        VirtAddress(self.0)
+    }
+}
+
 impl From<PTEntry> for PhysAddress {
     fn from(pte: PTEntry) -> Self {
         // 10-bit reserved / flag, 12-bit offset
@@ -136,6 +142,19 @@ impl PTEntry {
     fn global(&self) -> bool { self.flag(PTE_GLOBAL) }
     fn accesssed(&self) -> bool { self.flag(PTE_ACCESSED) }
     fn dirty(&self) -> bool { self.flag(PTE_DIRTY) }
+
+    fn write_flags(&mut self, flags: usize) {
+        unsafe {
+            (self.0 as *mut usize).write_volatile(flags & (PTE_VALID |
+                                                            PTE_READ |
+                                                            PTE_WRITE |
+                                                            PTE_EXEC |
+                                                            PTE_USER |
+                                                            PTE_GLOBAL |
+                                                            PTE_ACCESSED |
+                                                            PTE_DIRTY));
+        }
+    }
 }
 
 impl From<usize> for SATPAddress {
@@ -164,40 +183,129 @@ fn walk(pt: &PageTable, va: VirtAddress) -> Option<PTEntry> {
     Some(table.index(idx))
 }
 
-// TODO: Implement VmError
-fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, mut pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
-    // Round down to next page aligned boundary (multiple of pg size).
-    let mut start = va.0 & !(4096 - 1);
-    let end = (va.0 + size) & !(4096 - 1);
 
-    while start < end {
-        // 1. Walk page table and find pte.
-        match walk(pt, VirtAddress::from(start)) {
-            // 2. Write PTE and set it as valid
-            Some(pte) => { pte.set(pa.to_pte(flag | PTE_VALID)); }
-            // 3. Allocate a new page and do step 2. or fail.
+/// Returns the next page table one level down, possibly allocating if
+/// it does not exist
+///
+/// TODO make sure these are the right flags to write for new page table level
+fn get_next_level_or_alloc(pool: &mut Kpools, table: &PageTable, idx:usize) -> PageTable {
+    let mut l2_entry = table.index(idx);
+    if !l2_entry.valid() {
+        // need to extend the tree
+        match pool.palloc(1) {
+            Some(page) => {
+                l2_entry.set(PTEntry(page as usize));
+                l2_entry.write_flags(PTE_VALID | PTE_READ | PTE_WRITE);
+            },
             None => {
-                match pool.palloc() {
-                    Some(ptr) => { PTEntry::from(ptr as usize).set(pa.to_pte(flag | PTE_VALID)); },
-                    None => { return Err(VmError); },
-                };
+                log!(Error, "Couldn't allocate a page on new page table expansion.");
+                panic!();
             }
-        };
-        // 4. Increase addresses by 1 page per map() iteration.
-        start += 4096;
-        pa = pa + 4096;
+        }
+    }
+    PageTable::from(l2_entry)
+}
+
+/// Walks for the given page extent and ensures that all the tables on all the levels are valid, or allocates them if not
+fn ensure_valid_walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, num_pages: usize) {
+    let l3_table = pt.clone();
+    assert!(va.0 < VA_TOP);
+    let l3_range = (va.vpn(3), (va.clone() + (VirtAddress::from(4096*num_pages))).vpn(3));
+    // not that these are not really contiguous, you need to nagivate
+    // the tree, these are just the outermost bounds at each level
+    // ASSUMING you are already at the bound of the higher level
+    for i3 in l3_range.0..l3_range.1 { 
+        let mut l2_range = (va.vpn(2), (va.clone() + (VirtAddress::from(4096*num_pages))).vpn(2));
+        if i3 != l3_range.0 {
+            l2_range.0 = 0;
+        }
+        if i3 != l3_range.1 {
+            l2_range.1 = PTE_TOP;
+        }
+        // basically if you are in a middle segment, expand the
+        // proper side(s) to get the full length for this level
+        
+        
+        let l2_table = get_next_level_or_alloc(pool, &l3_table, i3);
+        
+        for i2 in l2_range.0..l2_range.1 {
+            let mut l1_range = (va.vpn(1), (va.clone() + (VirtAddress::from(4096*num_pages))).vpn(1));
+            if i2 != l2_range.0 {
+                l1_range.0 = 0;
+            }
+            if i2 != l2_range.1 {
+                l1_range.1 = PTE_TOP;
+            }
+            // same thing
+            
+            get_next_level_or_alloc(pool, &l2_table, i2);
+            // we don't need to iterate here because after this are
+            // leaf nodes, and we only are concerned with making sure
+            // the walk itself is valid
+        }
+    }
+}
+
+/// Maps some number of pages into the VM given by pt of byte length
+/// size. 
+///
+/// Rounds down va and size to page size multiples. 
+// TODO: Implement VmError
+fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
+    // Round down to next page aligned boundary (multiple of pg size).
+    let start = va.0 & !(4096 - 1);
+    let num_pages = size >> 12;
+    if start != va.0 {
+        log!(Warning, "page_map rounded virtual address down to a page size multiple.");
+    }
+    if num_pages != size << 12 {
+        log!(Warning, "page_map rounded size down to a page size multiple.");
+    }
+
+    ensure_valid_walk(pool, pt, va, num_pages);
+    
+    for i in 0..num_pages {
+        match walk(pt, VirtAddress::from(start + (4096 * i))) {
+            Some(pte) => {
+                pte.set((pa + 4096*i).to_pte(flag |PTE_VALID));
+            },
+            None => {
+                log!(Error, "page_map found invalid page on the walk down. Violates assumptions");
+                panic!();
+            }
+        }
+        
     }
     Ok(())
+    // Old version without assumption. Do not use.
+    // while start < end {
+    //     // 1. Walk page table and find pte.
+    //     match walk(pt, VirtAddress::from(start)) {
+    //         // 2. Write PTE and set it as valid
+    //         Some(pte) => { pte.set(pa.to_pte(flag | PTE_VALID)); }
+    //         // 3. Allocate a new page and do step 2. or fail.
+    //         None => {
+    //             match pool.palloc() {
+    //                 Some(ptr) => { PTEntry::from(ptr as usize).set(pa.to_pte(flag | PTE_VALID)); },
+    //                 None => { return Err(VmError); },
+    //             };
+    //         }
+    //     };
+    //     // 4. Increase addresses by 1 page per map() iteration.
+    //     start += 4096;
+    //     pa = pa + 4096;
+    // }
+    // Ok(())
 }
 
 // Initialize kernel page table 
 pub fn kpage_init(pool: &mut Kpools) {
-    let base = pool.palloc().unwrap() as usize;
+    let base = pool.palloc(1).unwrap() as usize;
     let mut kpage_table = PageTable { base: PhysAddress::from(base) };
 
     unsafe {
         _ = page_map(
-            pool, 
+            pool,
             &mut kpage_table, 
             VirtAddress::from(UART_BASE), 
             PhysAddress::from(UART_BASE), 
@@ -205,7 +313,7 @@ pub fn kpage_init(pool: &mut Kpools) {
             PTE_READ | PTE_WRITE);
 
         _ = page_map(
-            pool, 
+            pool,
             &mut kpage_table, 
             VirtAddress::from(DRAM_BASE), 
             PhysAddress::from(DRAM_BASE), 
@@ -213,7 +321,7 @@ pub fn kpage_init(pool: &mut Kpools) {
             PTE_READ | PTE_EXEC);
 
         _ = page_map(
-            pool, 
+            pool,
             &mut kpage_table, 
             VirtAddress::from(TEXT_END), 
             PhysAddress::from(TEXT_END), 

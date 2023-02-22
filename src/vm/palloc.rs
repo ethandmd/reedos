@@ -56,9 +56,9 @@ impl Kpools {
     }
 
     /// Either gives you a pointer to a new page (zeroed), or null.
-    pub fn palloc(&mut self) -> Option<*mut u8> {
+    pub fn palloc(&mut self, num_pages: usize) -> Option<*mut u8> {
         let id = read_tp();
-        let page_req: Layout = Layout::from_size_align(PAGE_SIZE, PAGE_SIZE).unwrap();
+        let page_req: Layout = Layout::from_size_align(PAGE_SIZE * num_pages, PAGE_SIZE).unwrap();
 
         // try local pool first
         let local = self.global[id as usize].lock();
