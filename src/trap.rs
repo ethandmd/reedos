@@ -21,8 +21,8 @@ fn s_handler() {
 
     match cause {
         _ => {
-            //log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
-            panic!()
+            log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
+            // panic!()
         }
     }
 
@@ -34,16 +34,18 @@ fn m_handler() {
 
     match mcause {
         riscv::MSTATUS_TIMER => {
-            //log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
+            log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
             clint::set_mtimecmp(10_000_000);
         },
         _ => {
-            //log::log!(Warning, "Uncaught machine mode interupt. mcause: {:X}", mcause);
-            panic!();
+            log::log!(Warning, "Uncaught machine mode interupt. mcause: {:X}", mcause);
+            // panic!();
         }
     }
 }
 
+//     li a1, 2
+// csrw sip, a1
 global_asm!(
     r#"
     .option norvc
@@ -51,8 +53,7 @@ global_asm!(
     .global __mtrapvec
 __mtrapvec:
     call {}
-    li a1, 2
-    csrw sip, a1
+
     mret
     "#, sym m_handler
     );

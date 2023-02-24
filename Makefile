@@ -1,6 +1,6 @@
 LIBREEDOS=target/riscv64gc-unknown-none-elf/debug/libreedos.a
 
-build:
+build: kernel.ld .FORCE
 	cargo build
 	riscv64-unknown-elf-ld -Tkernel.ld $(LIBREEDOS) -o reedos.ELF
 
@@ -42,3 +42,5 @@ clean:
 	cargo clean
 	rm -rf src/*.o
 	rm -rf reedos.ELF
+
+.PHONY: .FORCE

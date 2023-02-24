@@ -90,6 +90,7 @@ fn main() -> ! {
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
         log!(Info, "Finished trap init...");
+        println!("{:#02x}", param::bss_end());
         vm::init();
         log!(Info, "Initialized the kernel page table...");
     } else {

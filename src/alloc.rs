@@ -85,9 +85,9 @@ impl KChunkHeader {
         self.size = user_size + size_of::<Self>() + self.alignment_offset();
     }
 
-    /// Update the usable size of this chunk by resizing.
-    fn set_padded_size(&mut self, padded_size: usize) {
-        self.size = padded_size + size_of::<Self>();
+    /// Update size of this chunk.
+    fn set_size(&mut self, size: usize) {
+        self.size = size;
     }
 
     /// Set the fingerprint of the call that put this into use.
@@ -266,18 +266,20 @@ unsafe impl GlobalAlloc for Kalloc {
                 if padded_size >= 2 * required_size {
                     // too big, we should only take what we need
 
-                    // how many bytes to the next header
+                    // how many bytes to the next header from the top of this header
                     let skip: usize = required_size + size_of::<KChunkHeader>();
 
-                    let new_chunk: *mut KChunkHeader = cptr.byte_offset(skip as isize);
+                    let new_chunk: *mut KChunkHeader = (cptr as usize + skip) as *mut KChunkHeader;
+                    println!("chunk + skip: {:#02x}", cptr as usize + skip);
+                    println!("chunk + skip as *...: {:?}", new_chunk);
                     (*new_chunk).init_free(padded_size - skip);
                     // does not set layout of new chunk
 
-                    (*chunk).set_padded_size(required_size);
+                    (*chunk).set_size(skip);
                     (*chunk).set_is_free(false);
                     (*chunk).set_layout(layout);
                     let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), internal_align);
+                        Kalloc::adjust_ptr_with_align(chunk.start_of_padding(), internal_align);
                     chunk.set_alignment_offset(ptr_and_offset.1);
                     return ptr_and_offset.0;
                 } else {
