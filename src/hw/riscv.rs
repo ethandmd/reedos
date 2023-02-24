@@ -144,22 +144,18 @@ pub fn write_mie(x: u64) {
 }
 
 
-// SATP := supervisor address translation and protection.
-// This is where we hold the page table address.
-// use riscv's sv39 page table scheme.
-//
 // For reference:
-// #define SATP_SV39 (8L << 60)
-// #define MAKE_SATP(pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
-pub fn read_satp() -> u64 {
-    let pt: u64;
+// SATP Sv39 mode: (8L << 60)
+// From addr to satp reg: (pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
+pub fn read_satp() -> usize {
+    let pt: usize;
     unsafe {
         asm!("csrr {}, satp", out(reg) pt);
     }
     pt
 }
 
- pub fn write_satp(pt: u64) {
+ pub fn write_satp(pt: usize) {
      unsafe {
          asm!("csrw satp, {}", in(reg) pt);
      }

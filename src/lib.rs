@@ -88,9 +88,9 @@ fn main() -> ! {
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
-        log!(Info, "Finished trap init.");
-        let _ = vm::init();
-        log!(Info, "Initialized the allocator.");
+        log!(Info, "Finished trap init...");
+        vm::init();
+        log!(Info, "Initialized the kernel page table...");
     } else {
         trap::init();
     }
