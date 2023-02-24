@@ -21,8 +21,7 @@ use crate::device::uart;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("PANIC!: {:?}", info);
+fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
