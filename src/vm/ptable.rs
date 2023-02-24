@@ -66,8 +66,8 @@ macro_rules! PhyToSATP {
 }
 
 // Read the memory at location self + index * 8 bytes
-unsafe fn read_phy_offset(phy: PhysAddress, index: usize) ->  PTEntry {
-    phy.byte_add(index * 8).read_volatile()
+unsafe fn get_phy_offset(phy: PhysAddress, index: usize) ->  *mut PTEntry {
+    phy.byte_add(index * 8)
 }
 
 fn set_pte(pte: *mut PTEntry, contents: PTEntry) {
@@ -86,7 +86,7 @@ impl PageTable {
     fn index_mut(&self, idx: usize) -> *mut PTEntry {
         assert!(idx < PTE_TOP);
         unsafe {
-            &mut read_phy_offset(self.base, idx)
+            get_phy_offset(self.base, idx)
         }
     }
 }
@@ -136,7 +136,7 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddr
     if start != va {
         log!(Warning, "page_map rounded virtual address down to a page size multiple.");
     }
-    if num_pages != size << 12 {
+    if num_pages << 12 != size {
         log!(Warning, "page_map rounded size down to a page size multiple.");
     }
     

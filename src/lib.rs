@@ -2,7 +2,7 @@
 #![no_std]
 #![no_main]
 #![feature(pointer_byte_offsets, error_in_core)]
-
+#![feature(panic_info_message)]
 use core::panic::PanicInfo;
 
 pub mod entry;
@@ -21,7 +21,8 @@ use crate::device::uart;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
+fn panic(info: &PanicInfo) -> ! {
+    println!("PANIC! {:?}", info.message());
     loop {}
 }
 

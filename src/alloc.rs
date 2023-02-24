@@ -187,6 +187,10 @@ unsafe impl Sync for Kalloc {}
 impl Kalloc {
     /// Make a new managed region given by the bounds. They are inclusive and exclusive respectively.
     pub fn new(start: usize, end: usize) -> Self {
+        let first_chunk = start as *mut KChunkHeader;
+        unsafe {
+            (*first_chunk).init_free(end - start);
+        }
         Kalloc {
             heap_start: start,
             heap_end: end,
@@ -207,8 +211,7 @@ impl Kalloc {
 
     // TODO this and next can be replaced with stuff from core::pointer I think
 
-    /// Make a size request conform to its matching alignment.
-    pub fn adjust_size_with_align(size: usize, align: &usize) -> usize {
+    pub fn adjust_size_with_align(size: usize, align: usize) -> usize {
         let mask: usize = align - 1;
         if (size & mask) != 0 {
             // has low order bits
@@ -220,7 +223,10 @@ impl Kalloc {
     }
 
     /// Adjust a pointer forward until it matches alignment at least.
-    pub fn adjust_ptr_with_align(ptr: *mut u8, align: &usize) -> (*mut u8, usize) {
+    ///
+    /// Returns a tuple of the changed pointer and the number of bytes
+    /// forward that it was moved
+    pub fn adjust_ptr_with_align(ptr: *mut u8, align: usize) -> (*mut u8, usize) {
         let mask: usize = align - 1;
         let addr: usize = ptr as usize;
         if (addr & mask) != 0 {
@@ -236,24 +242,32 @@ impl Kalloc {
 unsafe impl GlobalAlloc for Kalloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let internal_align = max(layout.align(), size_of::<KChunkHeader>());
-        let internal_size = Kalloc::adjust_size_with_align(layout.size(), &internal_align);
+
 
         for cptr in self.mut_iter() {
             let chunk: &mut KChunkHeader = &mut *cptr;
+            let aligned_ptr = Kalloc::adjust_ptr_with_align(
+                chunk.start_of_padding(), internal_align).0 as usize;
+            let aligned_ptr_size = aligned_ptr + layout.size();
+            let required_size = aligned_ptr_size - chunk.start_of_padding() as usize;
             let padded_size = chunk.size_with_padding();
-            if padded_size >= internal_size && chunk.is_free() {
+            if padded_size >= required_size && chunk.is_free() {
                 // this will work
-                if padded_size >= 2 * internal_size {
+                if padded_size >= 2 * required_size {
                     // too big, we should only take what we need
-                    let new_chunk: *mut KChunkHeader = cptr.byte_offset(internal_size as isize);
-                    (*new_chunk).init_free(padded_size - internal_size);
+
+                    // how many bytes to the next header
+                    let skip: usize = required_size + size_of::<KChunkHeader>();
+
+                    let new_chunk: *mut KChunkHeader = cptr.byte_offset(skip as isize);
+                    (*new_chunk).init_free(padded_size - skip);
                     // does not set layout of new chunk
 
-                    (*chunk).set_padded_size(internal_size);
+                    (*chunk).set_padded_size(required_size);
                     (*chunk).set_is_free(false);
                     (*chunk).set_layout(layout);
                     let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), &internal_align);
+                        Kalloc::adjust_ptr_with_align(chunk.user_data(), internal_align);
                     chunk.set_alignment_offset(ptr_and_offset.1);
                     return ptr_and_offset.0;
                 } else {
@@ -261,7 +275,7 @@ unsafe impl GlobalAlloc for Kalloc {
                     chunk.set_is_free(false);
                     chunk.set_layout(layout);
                     let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), &internal_align);
+                        Kalloc::adjust_ptr_with_align(chunk.user_data(), internal_align);
                     chunk.set_alignment_offset(ptr_and_offset.1);
                     return ptr_and_offset.0;
                 }
@@ -299,7 +313,7 @@ unsafe impl GlobalAlloc for Kalloc {
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let previous: Option<*mut KChunkHeader> = None;
         let internal_align = max(layout.align(), size_of::<KChunkHeader>());
-        let internal_size = Kalloc::adjust_size_with_align(new_size, &internal_align);
+        let internal_size = Kalloc::adjust_size_with_align(new_size, internal_align);
 
         for cptr in self.mut_iter() {
             let chunk = &mut *cptr;
@@ -321,7 +335,7 @@ unsafe impl GlobalAlloc for Kalloc {
 
                         let ptr_and_offset = Kalloc::adjust_ptr_with_align(
                             p_chunk.start_of_padding(),
-                            &internal_align,
+                            internal_align,
                         );
                         p_chunk.set_alignment_offset(ptr_and_offset.1);
 
