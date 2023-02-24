@@ -38,7 +38,7 @@ impl Kpools {
 
         let global: [Mutex<Kalloc>; NHART + 1] = from_fn(|id| {
             let local_start = start + local_size * id;
-            let global_start = start + (local_size * (NHART + 1));
+            let global_start = start + (local_size * NHART);
             if id < NHART {
                 return Mutex::new(Kalloc::new(local_start, local_start + local_size));
             } else {
@@ -62,6 +62,7 @@ impl Kpools {
 
         // try local pool first
         let local = self.global[id as usize].lock();
+        //local.print_alloc();
         unsafe {
             let ret = (*local).alloc(page_req);
             if ret != null_mut::<u8>() {

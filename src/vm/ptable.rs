@@ -89,6 +89,21 @@ impl PageTable {
             get_phy_offset(self.base, idx)
         }
     }
+
+    fn print_table(&self) {
+        for i in 0..PTE_TOP {
+            let pte = self.index_mut(i);
+            unsafe {
+                //if *pte != 0 {
+                print!("{}: {:?}, ", i, *pte);
+                if i > 0 && i % 4 == 0 {
+                    println!();
+                }
+                //}
+            }
+        }
+        println!();
+    }
 }
 
 // Get the address of the PTE for va given the page table pt.
@@ -100,7 +115,7 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
     for level in (1..3).rev() {
         let idx = vpn!(va, level);
         let next: *mut PTEntry = table.index_mut(idx);
-        
+        //println!("level {}: {:?}", level, table.base);//table.print_table();
         table = match PteGetFlag!(*next, PTE_VALID) {
             true => { PageTable::from(*next) },
             false => {
@@ -160,31 +175,32 @@ pub fn kpage_init(pool: &mut Kpools) {
     let base = pool.palloc(1).expect("Couldn't allocate new page") as *mut usize;
     let mut kpage_table = PageTable { base };
 
-    unsafe {
-        _ = page_map(
-            pool,
-            &mut kpage_table, 
-            UART_BASE, 
-            UART_BASE as *mut usize, 
-            PAGE_SIZE, 
-            PTE_READ | PTE_WRITE);
+    _ = page_map(
+        pool,
+        &mut kpage_table, 
+        UART_BASE, 
+        UART_BASE as *mut usize, 
+        PAGE_SIZE, 
+        PTE_READ | PTE_WRITE);
+    log!(Debug, "Successfully mapped UART into kernel pgtable...");
 
-        _ = page_map(
-            pool,
-            &mut kpage_table, 
-            DRAM_BASE, 
-            DRAM_BASE as *mut usize, 
-            __text_end - DRAM_BASE, 
-            PTE_READ | PTE_EXEC);
+    _ = page_map(
+        pool,
+        &mut kpage_table, 
+        DRAM_BASE, 
+        DRAM_BASE as *mut usize, 
+        text_end() - DRAM_BASE, 
+        PTE_READ | PTE_EXEC);
+    log!(Debug, "Succesfully mapped kernel text into kernel pgtable...");
 
-        _ = page_map(
-            pool,
-            &mut kpage_table, 
-            __text_end, 
-            __text_end as *mut usize, 
-            __memory_end - __text_end, 
-            PTE_READ | PTE_WRITE);
-    }
+    _ = page_map(
+        pool,
+        &mut kpage_table, 
+        text_end(), 
+        text_end() as *mut usize, 
+        dram_end() - text_end(), 
+        PTE_READ | PTE_WRITE);
+    log!(Debug, "Succesfully mapped kernel heap...");
 
     write_satp(PhyToSATP!(kpage_table.base as usize));
 }
