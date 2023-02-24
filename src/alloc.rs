@@ -27,6 +27,7 @@ fn out_of_bounds(addr: usize, heap_start: usize, heap_end: usize) -> bool {
 ///
 /// This is directly before the chunk allocated for user memory that
 /// it corresponds to.
+#[derive(Debug)]
 pub struct KChunkHeader {
     size: usize,             // Size of the chunk including this header
     layout: Layout,          // What alloc/realloc call was this a response to?
@@ -234,6 +235,15 @@ impl Kalloc {
             (((addr & !mask) + align) as *mut u8, align - (addr & mask))
         } else {
             (ptr, 0)
+        }
+    }
+
+    pub fn print_alloc(&self) {
+        for cptr in self.mut_iter() {
+            unsafe {
+                let chunk: &KChunkHeader = &*cptr;
+                print!("{:?}", *chunk);
+            }
         }
     }
 }
