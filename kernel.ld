@@ -6,6 +6,8 @@ MEMORY
   ram  (wxa) : ORIGIN = 0x80000000, LENGTH = 128M
 }
 
+/* If you don't Align(16), it breaks. If you try to page align .text, it breaks. */
+
 SECTIONS
 {
   .text : {
