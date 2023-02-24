@@ -145,14 +145,16 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
 /// Rounds down va and size to page size multiples. 
 // TODO: Implement VmError
 fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
-    // Round down to next page aligned boundary (multiple of pg size).
-    let start = va & !(4096 - 1);
-    let num_pages = size >> 12;
+    // Round up to next page aligned boundary (multiple of pg size).
+    //let start = va & !(4096 - 1); // round page down
+    let start = va + (PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    //let num_pages = size + (PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
+    let num_pages = ((size + (PAGE_SIZE - 1)) & !(PAGE_SIZE - 1)) >> 12;
     if start != va {
-        log!(Warning, "page_map rounded virtual address down to a page size multiple.");
+        log!(Warning, "Rounded va: {} up to 4K multiple: {}...", va, start);
     }
     if num_pages << 12 != size {
-        log!(Warning, "page_map rounded size down to a page size multiple.");
+        log!(Warning, "Rounded size, {}, up to map {} 4K pages...", size, num_pages);
     }
     
     for i in 0..num_pages {
