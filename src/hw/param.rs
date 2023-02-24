@@ -25,13 +25,16 @@
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
 //}
 
+use core::ptr::addr_of;
+
 // NOTE:
 // We can't just use link_name for linker symbols, cause they don't
-// bind correctly for some reason
+// bind correctly for some reason.
+// Instead, use core::ptr::addr_of!() to get address and then cast to usize.
 extern "C" {
-    pub static __text_end: usize;
-    pub static __bss_end: usize;
-    pub static __memory_end: usize;
+    static __text_end: usize;
+    static __bss_end: usize;
+    static __memory_end: usize;
 }
 
 
@@ -40,9 +43,27 @@ pub const CLINT_BASE: usize = 0x2000000;
 pub const UART_BASE: usize = 0x10000000;
 pub const DRAM_BASE: usize = 0x80000000;
 
-// pub static TEXT_END: usize = unsafe { __text_end };
-// pub static BSS_END: usize = unsafe { __bss_end };
-// pub static DRAM_END: usize = unsafe { __memory_end };
+//pub static TEXT_END: usize = unsafe { ptr::addr_of!(__text_end) as usize };
+//pub static BSS_END: usize = unsafe { ptr::addr_of!(__bss_end) as usize };
+//pub static DRAM_END: usize = unsafe { ptr::addr_of!(__memory_end) as usize };
+
+pub fn text_end() -> usize {
+    unsafe {
+        addr_of!(__text_end) as usize
+    }
+}
+
+pub fn bss_end() -> usize {
+    unsafe {
+        addr_of!(__bss_end) as usize
+    }
+}
+
+pub fn dram_end() -> usize {
+    unsafe {
+        addr_of!(__memory_end) as usize
+    }
+}
 
 pub static PAGE_SIZE: usize = 4096;
 
