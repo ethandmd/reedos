@@ -22,7 +22,7 @@ gdb-start: build
 	echo "Ctrl-a x to quit qemu"
 	qemu-system-riscv64 -s -S \
 		-machine virt \
-		-smp 2 \
+		-smp 1 \
 		-m 128M \
 		-bios none \
 		-nographic \
@@ -32,7 +32,7 @@ start: build
 	echo "Ctrl-a x to quit qemu"
 	qemu-system-riscv64 \
 		-machine virt \
-		-smp 2 \
+		-smp 1 \
 		-m 128M \
 		-bios none \
 		-nographic \

@@ -17,31 +17,31 @@ pub fn init() {
 }
 
 fn s_handler() {
-    log!(Debug, "Start of sup mode handler");
     let cause = riscv::read_scause();
 
-
-    // scause 5 is timer interupt
     match cause {
         _ => {
             log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
+            panic!()
         }
     }
 
-    riscv::write_sip(riscv::read_sip() & !5);
+    // riscv::write_sip(0);
 }
 
 fn m_handler() {
     let mcause = riscv::read_mcause();
 
-    log!(Debug, "Machine mode interupt. Are you sure you don't want a Supervisor mode one?");
     match mcause {
         riscv::MSTATUS_TIMER => {
-            log::log!(Debug, "Timer interupt, hart: {}", riscv::read_mhartid());
-            clint::set_mtimecmp(10_000_000);
+            log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
+            log!(Error, "Currently all interupts should be disabled. Something has gone wrong");
+            panic!();
+            // clint::set_mtimecmp(10_000_000);
         },
         _ => {
             log::log!(Warning, "Uncaught machine mode interupt. mcause: {:X}", mcause);
+            panic!();
         }
     }
 }

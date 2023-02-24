@@ -12,13 +12,13 @@ SECTIONS
       *(.text .text.*)
       PROVIDE(__text_end = .);
   }
-  
+
   PROVIDE(__global_pointer = .);
-  
+
   .rodata : {
       *(.srodata .srodata.*)
       *(.rodata .rodata.*)
-  } 
+  }
   .data : {
       *(.sdata .sdata.*)
       *(.data .data.*)
@@ -29,5 +29,5 @@ SECTIONS
       . = ALIGN(0x1000);
   }
   PROVIDE(__bss_end = .);
-  PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram)); 
+  PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram));
 }

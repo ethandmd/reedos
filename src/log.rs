@@ -41,29 +41,29 @@ pub enum LogSeverity {
 macro_rules! log
 {
     (Debug, $fmt:expr) => ({
-	print!(concat!("[DEBUG] ", $fmt, "\r\n"))
+        print!(concat!("[DEBUG] ", $fmt, "\r\n"))
     });
     (Info, $fmt:expr) => ({
-	print!(concat!("[INFO] ", $fmt, "\r\n"))
+        print!(concat!("[INFO] ", $fmt, "\r\n"))
     });
     (Warning, $fmt:expr) => ({
-	print!(concat!("[WARN] ", $fmt, "\r\n"))
+        print!(concat!("[WARN] ", $fmt, "\r\n"))
     });
     (Error, $fmt:expr) => ({
-	print!(concat!("[ERROR] ", $fmt, "\r\n"))
+        print!(concat!("[ERROR] ", $fmt, "\r\n"))
     });
-    
+
     (Debug, $fmt:expr, $($args:tt)+) => ({
-	print!(concat!("[DEBUG]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[DEBUG]", $fmt, "\r\n"), $($args)+)
     });
     (Info, $fmt:expr, $($args:tt)+) => ({
-	print!(concat!("[INFO]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[INFO]", $fmt, "\r\n"), $($args)+)
     });
     (Warning, $fmt:expr, $($args:tt)+) => ({
-	print!(concat!("[WARN]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[WARN]", $fmt, "\r\n"), $($args)+)
     });
     (Error, $fmt:expr, $($args:tt)+) => ({
-	print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
     });
 }
 

@@ -317,15 +317,15 @@ pub fn kpage_init(pool: &mut Kpools) {
             &mut kpage_table, 
             VirtAddress::from(DRAM_BASE), 
             PhysAddress::from(DRAM_BASE), 
-            TEXT_END - DRAM_BASE, 
+            __text_end - DRAM_BASE, 
             PTE_READ | PTE_EXEC);
 
         _ = page_map(
             pool,
             &mut kpage_table, 
-            VirtAddress::from(TEXT_END), 
-            PhysAddress::from(TEXT_END), 
-            DRAM_END - TEXT_END, 
+            VirtAddress::from(__text_end), 
+            PhysAddress::from(__text_end), 
+            __memory_end - __text_end, 
             PTE_READ | PTE_WRITE);
     }
 

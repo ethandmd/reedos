@@ -25,29 +25,29 @@
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
 //}
 
-extern {
-    #[link_name = "__text_end"]
-    pub static TEXT_END: usize;
-
-    #[link_name = "__bss_end"]
-    pub static BSS_END: usize;
-
-    #[link_name = "__memory_end"]
-    pub static DRAM_END: usize;
+// NOTE:
+// We can't just use link_name for linker symbols, cause they don't
+// bind correctly for some reason
+extern "C" {
+    pub static __text_end: usize;
+    pub static __bss_end: usize;
+    pub static __memory_end: usize;
 }
+
+
 // Memlayout params
 pub const CLINT_BASE: usize = 0x2000000;
 pub const UART_BASE: usize = 0x10000000;
 pub const DRAM_BASE: usize = 0x80000000;
 
-//pub static TEXT_END: usize = unsafe { __text_end };
-//pub static BSS_END: usize = unsafe { __bss_end };
-//pub static DRAM_END: usize = unsafe { __memory_end };
+// pub static TEXT_END: usize = unsafe { __text_end };
+// pub static BSS_END: usize = unsafe { __bss_end };
+// pub static DRAM_END: usize = unsafe { __memory_end };
 
 pub static PAGE_SIZE: usize = 4096;
 
 // Run parameters
-pub const NHART: usize = 2;
+pub const NHART: usize = 1;
 
 
 // Unnecessary.
