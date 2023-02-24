@@ -54,16 +54,16 @@ macro_rules! log
     });
 
     (Debug, $fmt:expr, $($args:tt)+) => ({
-        print!(concat!("[DEBUG]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[DEBUG] ", $fmt, "\r\n"), $($args)+)
     });
     (Info, $fmt:expr, $($args:tt)+) => ({
-        print!(concat!("[INFO]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[INFO] ", $fmt, "\r\n"), $($args)+)
     });
     (Warning, $fmt:expr, $($args:tt)+) => ({
-        print!(concat!("[WARN]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[WARN] ", $fmt, "\r\n"), $($args)+)
     });
     (Error, $fmt:expr, $($args:tt)+) => ({
-        print!(concat!("[ERROR]", $fmt, "\r\n"), $($args)+)
+        print!(concat!("[ERROR] ", $fmt, "\r\n"), $($args)+)
     });
 }
 
