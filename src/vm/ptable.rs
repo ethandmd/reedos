@@ -121,8 +121,8 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
             false => {
                 if alloc_new {
                     match pool.palloc(1) {
-                        Some(pg) => { 
-                            *next = PhyToPte!(pg as usize);
+                        Some(pg) => {
+                            *next = PteSetFlag!(PhyToPte!(pg as usize), PTE_VALID);
                             PageTable::from(PhyToPte!(pg as usize))
                         }
                         None => { return None }

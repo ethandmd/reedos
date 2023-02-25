@@ -270,8 +270,6 @@ unsafe impl GlobalAlloc for Kalloc {
                     let skip: usize = required_size + size_of::<KChunkHeader>();
 
                     let new_chunk: *mut KChunkHeader = (cptr as usize + skip) as *mut KChunkHeader;
-                    println!("chunk + skip: {:#02x}", cptr as usize + skip);
-                    println!("chunk + skip as *...: {:?}", new_chunk);
                     (*new_chunk).init_free(padded_size - skip);
                     // does not set layout of new chunk
 

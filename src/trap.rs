@@ -22,7 +22,7 @@ fn s_handler() {
     match cause {
         _ => {
             log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
-            // panic!()
+            panic!()
         }
     }
 
