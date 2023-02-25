@@ -74,7 +74,7 @@ fn set_pte(pte: *mut PTEntry, contents: PTEntry) {
     unsafe {
         pte.write_volatile(contents);
     }
-}           
+}
 
 impl From<PTEntry> for PageTable {
     fn from(pte: PTEntry) -> Self {

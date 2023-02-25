@@ -12,7 +12,7 @@
 /// the compiler
 use core::alloc::*;
 use core::cell::UnsafeCell;
-use core::mem::size_of;
+use core::mem::{size_of, align_of_val};
 
 use core::cmp::max;
 use core::ptr::null_mut;
@@ -28,11 +28,12 @@ fn out_of_bounds(addr: usize, heap_start: usize, heap_end: usize) -> bool {
 /// This is directly before the chunk allocated for user memory that
 /// it corresponds to.
 #[derive(Debug)]
+#[repr(C)]
 pub struct KChunkHeader {
     size: usize,             // Size of the chunk including this header
+    alignment_offset: usize, // Number of bytes between end of header and beginning of user data
     layout: Layout,          // What alloc/realloc call was this a response to?
     is_free: bool,           // Is this chunk in use or not?
-    alignment_offset: usize, // Number of bytes between end of header and beginning of user data
 }
 
 impl KChunkHeader {
@@ -252,7 +253,7 @@ impl Kalloc {
 unsafe impl GlobalAlloc for Kalloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let internal_align = max(layout.align(), size_of::<KChunkHeader>());
-
+        let next_header_align = align_of_val(self);
 
         for cptr in self.mut_iter() {
             let chunk: &mut KChunkHeader = &mut *cptr;
@@ -260,35 +261,32 @@ unsafe impl GlobalAlloc for Kalloc {
                 chunk.start_of_padding(), internal_align).0 as usize;
             let aligned_ptr_size = aligned_ptr + layout.size();
             let required_size = aligned_ptr_size - chunk.start_of_padding() as usize;
+            // ^ is how big the current chunk needs to be to accomidate the current request
             let padded_size = chunk.size_with_padding();
+            // ^ What is the maximum it can fit now?
             if padded_size >= required_size && chunk.is_free() {
                 // this will work
-                if padded_size >= 2 * required_size {
-                    // too big, we should only take what we need
 
-                    // how many bytes to the next header from the top of this header
-                    let skip: usize = required_size + size_of::<KChunkHeader>();
+                // min number bytes to the next header from the top of this header
+                let skip: usize = required_size;
 
-                    let new_chunk: *mut KChunkHeader = (cptr as usize + skip) as *mut KChunkHeader;
-                    (*new_chunk).init_free(padded_size - skip);
-                    // does not set layout of new chunk
+                let next_header = Self::adjust_ptr_with_align(
+                    ((chunk.start_of_padding() as usize)+ skip) as *mut u8,
+                                                        next_header_align).0;
 
-                    (*chunk).set_size(skip);
-                    (*chunk).set_is_free(false);
-                    (*chunk).set_layout(layout);
-                    let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.start_of_padding(), internal_align);
-                    chunk.set_alignment_offset(ptr_and_offset.1);
-                    return ptr_and_offset.0;
-                } else {
-                    // this is close enough, just grab it
-                    chunk.set_is_free(false);
-                    chunk.set_layout(layout);
-                    let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), internal_align);
-                    chunk.set_alignment_offset(ptr_and_offset.1);
-                    return ptr_and_offset.0;
-                }
+
+                let new_chunk: *mut KChunkHeader = next_header as *mut KChunkHeader;
+                (*new_chunk).init_free(padded_size - skip);
+                // does not set layout of new chunk
+
+                (*chunk).set_size(skip);
+                (*chunk).set_is_free(false);
+                (*chunk).set_layout(layout);
+                let ptr_and_offset =
+                    Kalloc::adjust_ptr_with_align(chunk.start_of_padding(), internal_align);
+                chunk.set_alignment_offset(ptr_and_offset.1);
+                return ptr_and_offset.0;
+
             }
         }
         return null_mut::<u8>(); // Can't find any space
