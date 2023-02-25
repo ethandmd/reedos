@@ -122,7 +122,7 @@ impl KChunkHeader {
         heap_start: usize,
         heap_end: usize,
     ) -> Option<*mut KChunkHeader> {
-        let next = (self as *mut KChunkHeader).byte_offset(self.size() as isize);
+        let next = (self as *mut KChunkHeader).byte_add(self.size());
         if out_of_bounds(next as usize, heap_start, heap_end) {
             None
         } else {
