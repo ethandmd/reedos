@@ -27,7 +27,11 @@ struct PageTable {
     base: PhysAddress, // Page Table located at base address.
 }
 
-enum VmError{} // Custom error type, may remove later.
+#[derive(Debug)]
+enum VmError{
+    PallocFail,
+    InvalidPage,
+} // Custom error type, may remove later.
 
 macro_rules! vpn {
     ($p:expr, $l:expr) => {
@@ -109,13 +113,13 @@ impl PageTable {
 // Get the address of the PTE for va given the page table pt.
 // Returns Either PTE or None, callers responsibility to use PTE 
 // or allocate a new page.
-unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Option<*mut PTEntry> {
+unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut PTEntry, VmError> {
     let mut table = pt.clone();
     assert!(va < VA_TOP);
     for level in (1..3).rev() {
         let idx = vpn!(va, level);
         let next: *mut PTEntry = table.index_mut(idx);
-        //println!("level {}: {:?}", level, table.base);//table.print_table();
+        println!("level {}: {:?}", level, table.base);//table.print_table();
         table = match PteGetFlag!(*next, PTE_VALID) {
             true => { PageTable::from(*next) },
             false => {
@@ -125,10 +129,10 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
                             *next = PteSetFlag!(PhyToPte!(pg as usize), PTE_VALID);
                             PageTable::from(PhyToPte!(pg as usize))
                         }
-                        None => { return None }
+                        None => { return Err(VmError::PallocFail) }
                     }
                 } else { 
-                    return None 
+                    return Err(VmError::InvalidPage); 
                 }
             }
         };
@@ -136,7 +140,9 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
     // Last, return PTE leaf. Assuming we are all using 4K pages right now.
     // Caller's responsibility to check flags.
     let idx = vpn!(va, 0);
-    Some(table.index_mut(idx) as *mut PTEntry)
+    let print_table = PageTable::from(*table.index_mut(idx));
+    println!("level {}: {:?}", 0, print_table.base);
+    Ok(table.index_mut(idx))
 }
 
 /// Maps some number of pages into the VM given by pt of byte length
@@ -159,11 +165,11 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddr
     
     for i in 0..num_pages {
         match unsafe { walk(pool, pt, start + (4096 * i), true) } {
-            Some(pte) => {
+            Ok(pte) => {
                 set_pte(pte, PteSetFlag!(PhyToPte!(pa as usize + PAGE_SIZE*i), flag | PTE_VALID)); 
             },
-            None => {
-                log!(Error, "page_map found invalid page on the walk down. Violates assumptions");
+            Err(e) => {
+                log!(Error, "{:?}", e);
                 panic!();
             }
         }
@@ -175,6 +181,7 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddr
 // Initialize kernel page table 
 pub fn kpage_init(pool: &mut Kpools) {
     let base = pool.palloc(1).expect("Couldn't allocate new page") as *mut usize;
+    log!(Debug, "Kernel page table base addr: {:#02x}", base as usize);
     let mut kpage_table = PageTable { base };
 
     _ = page_map(
