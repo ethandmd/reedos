@@ -41,7 +41,7 @@ extern "C" {
 // Memlayout params
 pub const CLINT_BASE: usize = 0x2000000;
 pub const UART_BASE: usize = 0x10000000;
-pub const DRAM_BASE: usize = 0x80000000;
+pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
 //pub static TEXT_END: usize = unsafe { ptr::addr_of!(__text_end) as usize };
 //pub static BSS_END: usize = unsafe { ptr::addr_of!(__bss_end) as usize };
