@@ -2,7 +2,7 @@ pub mod palloc;
 pub mod ptable;
 
 use palloc::*;
-use ptable::kpage_init;
+use ptable::{kpage_init, PageTable};
 use crate::hw::param::*;
 
 static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
@@ -12,7 +12,7 @@ type PhysAddress = *mut usize;
 
 
 #[derive(Debug)]
-enum VmError {
+pub enum VmError {
     OutOfPages,
     PartialPalloc,
     PallocFail,
@@ -24,12 +24,12 @@ trait Palloc {
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
 
-pub fn init() {
+pub fn init() -> Result<PageTable, VmError> {
     unsafe {
         PAGEPOOL = &mut PagePool::new(bss_end(), dram_end());
     }
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
-    kpage_init();
+    kpage_init()
 }
