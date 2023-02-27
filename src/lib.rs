@@ -1,8 +1,11 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
-#![feature(pointer_byte_offsets, error_in_core)]
+#![feature(pointer_byte_offsets)]
+#![feature(error_in_core)]
+#![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
+#![feature(strict_provenance)]
 use core::panic::PanicInfo;
 
 pub mod entry;
@@ -90,7 +93,7 @@ fn main() -> ! {
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
         log!(Info, "Finished trap init...");
-        println!("{:#02x}", param::bss_end());
+        println!("{:#02x}", param::bss_end().addr());
         vm::init();
         log!(Info, "Initialized the kernel page table...");
     } else {

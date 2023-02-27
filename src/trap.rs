@@ -21,8 +21,8 @@ fn s_handler() {
 
     match cause {
         _ => {
-            // log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
-            panic!()
+            log::log!(Warning, "Uncaught supervisor mode interupt. scause: {:X}", cause);
+            //panic!()
         }
     }
 
@@ -34,7 +34,7 @@ fn m_handler() {
 
     match mcause {
         riscv::MSTATUS_TIMER => {
-            // log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
+            log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
             clint::set_mtimecmp(10_000_000);
         },
         _ => {
