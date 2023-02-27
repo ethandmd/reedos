@@ -25,16 +25,16 @@
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
 //}
 
-use core::ptr::addr_of;
+use core::ptr::addr_of_mut;
 
 // NOTE:
 // We can't just use link_name for linker symbols, cause they don't
 // bind correctly for some reason.
 // Instead, use core::ptr::addr_of!() to get address and then cast to usize.
 extern "C" {
-    static __text_end: usize;
-    static __bss_end: usize;
-    static __memory_end: usize;
+    static mut __text_end: usize;
+    static mut __bss_end: usize;
+    static mut __memory_end: usize;
 }
 
 
@@ -47,28 +47,28 @@ pub const DRAM_BASE: usize = 0x80000000;
 //pub static BSS_END: usize = unsafe { ptr::addr_of!(__bss_end) as usize };
 //pub static DRAM_END: usize = unsafe { ptr::addr_of!(__memory_end) as usize };
 
-pub fn text_end() -> usize {
+pub fn text_end() -> *mut usize {
     unsafe {
-        addr_of!(__text_end) as usize
+        addr_of_mut!(__text_end)
     }
 }
 
-pub fn bss_end() -> usize {
+pub fn bss_end() -> *mut usize {
     unsafe {
-        addr_of!(__bss_end) as usize
+        addr_of_mut!(__bss_end)
     }
 }
 
-pub fn dram_end() -> usize {
+pub fn dram_end() -> *mut usize {
     unsafe {
-        addr_of!(__memory_end) as usize
+        addr_of_mut!(__memory_end)
     }
 }
 
 pub static PAGE_SIZE: usize = 4096;
 
 // Run parameters
-pub const NHART: usize = 1;
+pub const NHART: usize = 2;
 
 
 // Unnecessary.
