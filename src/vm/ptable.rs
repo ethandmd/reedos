@@ -1,7 +1,7 @@
 // VA: 39bits, PA: 56bits
 // PTE size = 8 bytes
 use core::assert;
-use crate::vm::palloc::Kpools;
+use crate::vm::{PAGEPOOL, Palloc, PallocError};
 use crate::hw::param::*;
 use crate::hw::riscv::write_satp;
 
@@ -113,26 +113,26 @@ impl PageTable {
 // Get the address of the PTE for va given the page table pt.
 // Returns Either PTE or None, callers responsibility to use PTE 
 // or allocate a new page.
-unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut PTEntry, VmError> {
+unsafe fn walk(pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut PTEntry, PallocError> {
     let mut table = pt.clone();
     assert!(va < VA_TOP);
     for level in (1..3).rev() {
         let idx = vpn!(va, level);
         let next: *mut PTEntry = table.index_mut(idx);
-        println!("level {}: {:?}", level, table.base);//table.print_table();
+        println!("level {}: {:?}", level, table.base);
         table = match PteGetFlag!(*next, PTE_VALID) {
             true => { PageTable::from(*next) },
             false => {
                 if alloc_new {
-                    match pool.palloc(1) {
-                        Some(pg) => {
-                            *next = PteSetFlag!(PhyToPte!(pg as usize), PTE_VALID);
-                            PageTable::from(PhyToPte!(pg as usize))
+                    match (*PAGEPOOL).palloc(1) {
+                        Ok(pg) => {
+                            *next = PteSetFlag!(PhyToPte!(pg.addr.addr()), PTE_VALID);
+                            PageTable::from(PhyToPte!(pg.addr.addr()))
                         }
-                        None => { return Err(VmError::PallocFail) }
+                        Err(e) => { return Err(e) }
                     }
                 } else { 
-                    return Err(VmError::InvalidPage); 
+                    return Err(PallocError::PallocFail); 
                 }
             }
         };
@@ -150,7 +150,7 @@ unsafe fn walk(pool: &mut Kpools, pt: &PageTable, va: VirtAddress, alloc_new: bo
 ///
 /// Rounds down va and size to page size multiples. 
 // TODO: Implement VmError
-fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
+fn page_map(pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
     // Round up to next page aligned boundary (multiple of pg size).
     //let start = va & !(4096 - 1); // round page down
     let start = va + (PAGE_SIZE - 1) & !(PAGE_SIZE - 1);
@@ -164,7 +164,7 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddr
     }
     
     for i in 0..num_pages {
-        match unsafe { walk(pool, pt, start + (4096 * i), true) } {
+        match unsafe { walk(pt, start + (4096 * i), true) } {
             Ok(pte) => {
                 set_pte(pte, PteSetFlag!(PhyToPte!(pa as usize + PAGE_SIZE*i), flag | PTE_VALID)); 
             },
@@ -179,13 +179,12 @@ fn page_map(pool: &mut Kpools, pt: &mut PageTable, va: VirtAddress, pa: PhysAddr
 }
 
 // Initialize kernel page table 
-pub fn kpage_init(pool: &mut Kpools) {
-    let base = pool.palloc(1).expect("Couldn't allocate new page") as *mut usize;
-    log!(Debug, "Kernel page table base addr: {:#02x}", base as usize);
-    let mut kpage_table = PageTable { base };
+pub fn kpage_init() {
+    let base = unsafe { (*PAGEPOOL).palloc(1).expect("Couldn't allocate new page") };
+    log!(Debug, "Kernel page table base addr: {:#02x}", base.addr.addr());
+    let mut kpage_table = PageTable { base: base.addr };
 
     _ = page_map(
-        pool,
         &mut kpage_table, 
         UART_BASE, 
         UART_BASE as *mut usize, 
@@ -194,20 +193,18 @@ pub fn kpage_init(pool: &mut Kpools) {
     log!(Debug, "Successfully mapped UART into kernel pgtable...");
 
     _ = page_map(
-        pool,
         &mut kpage_table, 
         DRAM_BASE, 
         DRAM_BASE as *mut usize, 
-        text_end() - DRAM_BASE, 
+        text_end().addr() - DRAM_BASE, 
         PTE_READ | PTE_EXEC);
     log!(Debug, "Succesfully mapped kernel text into kernel pgtable...");
 
     _ = page_map(
-        pool,
         &mut kpage_table, 
+        text_end().addr(), 
         text_end(), 
-        text_end() as *mut usize, 
-        dram_end() - text_end(), 
+        dram_end().addr() - text_end().addr(), 
         PTE_READ | PTE_WRITE);
     log!(Debug, "Succesfully mapped kernel heap...");
 

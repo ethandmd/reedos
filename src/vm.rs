@@ -1,19 +1,29 @@
 pub mod palloc;
 pub mod ptable;
 
-use palloc::Kpools;
+use palloc::*;
 use ptable::kpage_init;
 use crate::hw::param::*;
 
-//use core::ptr;
+static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut();
+
+#[derive(Debug)]
+enum PallocError {
+    PallocFail,
+    PfreeFail,
+}
+
+trait Palloc {
+    fn palloc(&mut self, size: usize) -> Result<Page, PallocError>;
+    fn pfree(&mut self, size: usize) -> Result<(), PallocError>;
+}
 
 pub fn init() {
-    // Setup page allocation pool for harts + global
-    //let bss_end: usize = unsafe { ptr::addr_of!(__bss_end) as usize};
-    //let mem_end: usize = unsafe { ptr::addr_of!(__memory_end) as usize};
-    let pool = Kpools::new(bss_end() as *const usize, dram_end() as *const usize);
+    unsafe {
+        PAGEPOOL = &mut PagePool::new(bss_end(), dram_end());
+    }
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
-    kpage_init(&mut pool.lock());
+    // kpage_init();
 }
