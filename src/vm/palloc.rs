@@ -6,7 +6,7 @@
 use crate::lock::mutex::Mutex;
 use crate::hw::param::*;
 //use crate::hw::riscv::read_tp;
-use crate::vm::{Palloc, PallocError};
+use crate::vm::{Palloc, VmError};
 
 
 fn is_multiple(addr: usize, size: usize) -> bool {
@@ -22,7 +22,7 @@ pub struct PagePool {
 
 /// Characterizes any pool by tracking free pages.
 struct Pool {
-    free: Page,                 // Head of free page list (stored in the free pages).
+    free: Option<Page>,         // Head of free page list (stored in the free pages).
     bottom: *mut usize,         // Min addr of this page allocation pool.
     top: *mut usize,            // Max addr of this page allocation pool.
 }
@@ -34,17 +34,22 @@ struct FreeNode {
 
 // TODO: Add methods to manipulate this address without pub addr field.
 #[derive(PartialEq, PartialOrd, Eq, Ord)]
+#[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Page {
-    pub addr: *mut usize,  // ptr to start of page.
+    pub addr: *mut usize,  // ptr to first byte of page.
 }
 
 impl Palloc for PagePool {
-    fn palloc(&mut self, size: usize) -> Result<Page, PallocError> { 
-        todo!()
+    fn palloc(&mut self) -> Result<Page, VmError> {
+        let mut pool = self.pool.lock();
+        match pool.free {
+            None => Err(VmError::OutOfPages),
+            Some(page) => pool.alloc_page(page),
+        }
     }
 
-    fn pfree(&mut self, size: usize) -> Result<(), PallocError> { 
+    fn pfree(&mut self, size: usize) -> Result<(), VmError> { 
         todo!()
     }
 }
@@ -55,32 +60,54 @@ impl FreeNode {
     }
 }
 
-impl Page {
-    fn new(addr: *mut usize) -> Self {
+impl From<*mut usize> for Page {
+    fn from(addr: *mut usize) -> Self {
         Page { addr }
+    }
+}
+
+impl Page {
+    // Watchout, this zeroes new pages.
+    // If you don't want to zero, use From<T>.
+    fn new(addr: *mut usize) -> Self {
+        unsafe { addr.write_bytes(0, 512); }
+        Page { addr }
+    }
+
+    // 'size' is in bytes. write_bytes() takes count * size_of::<T>() in bytes.
+    // Since usize is 8 bytes, we want to zero out the page. Aka zero 512 PTEs.
+    fn zero(&mut self, size: usize) {
+        unsafe {
+            self.addr.write_bytes(0, 512);
+        }
     }
 
     // Takes a free page and writes the previous free page's addr in
     // the first 8 bytes. Then writes the next free page's addr in the
     // following 8 bytes.
     fn write_free(&mut self, free_node: FreeNode) {
+        self.write_prev(free_node.prev);
+        self.write_next(free_node.next);
+    }
+
+    fn write_next(&mut self, next: *mut usize) {
         unsafe {
-            self.addr.write_volatile(free_node.prev.addr());
-            self.addr.add(1).write_volatile(free_node.next.addr());
+            self.addr.add(1).write_volatile(next.addr());
+        }
+    }
+
+    fn write_prev(&mut self, prev: *mut usize) {
+        unsafe {
+            self.addr.write_volatile(prev.addr());
         }
     }
 
     fn read_free(&mut self) -> FreeNode {
-        let is_free = unsafe { self.addr.read_volatile() };
-        if is_free == 1 {
-            panic!("Attempted to use allocated page as free page.");
-        } else {
-            unsafe {
-                FreeNode::new(
-                    self.addr.read_volatile() as *mut usize,
-                    self.addr.add(1).read_volatile() as *mut usize,
-                )
-            }
+        unsafe {
+            FreeNode::new(
+                self.addr.read_volatile() as *mut usize,
+                self.addr.add(1).read_volatile() as *mut usize,
+            )
         }
     }
 }
@@ -108,7 +135,28 @@ impl Pool {
             pa = pa.map_addr(|addr| addr + chunk_size); // Don't use next_pa. End of loop will fail.
         }
         
-        Pool { free, bottom, top }
+        Pool { free: Some(free), bottom, top }
+    }
+
+    fn alloc_page(&mut self, mut page: Page) -> Result<Page, VmError> {
+        let free_node = page.read_free();
+        let prev = free_node.prev;
+        let next = free_node.next;
+        
+        if next.addr() == 0x0 {
+            self.free = None;
+        } else {
+            let mut new = Page::from(next);
+            new.write_prev(prev);
+            self.free = Some(new);
+        }
+
+        if prev.addr() != 0x0 {
+            Page::from(prev).write_next(next);
+        }
+
+        page.zero(PAGE_SIZE);
+        Ok(page)
     }
 }
 
