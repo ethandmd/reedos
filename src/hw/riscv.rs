@@ -288,23 +288,8 @@ pub fn read_stvec() -> usize {
     addr
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+pub fn flush_tlb() {
+    unsafe {
+        asm!("sfence.vma zero, zero");
+    }
+}
