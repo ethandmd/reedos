@@ -30,6 +30,13 @@ SECTIONS
       *(.data .data.*)
       . = ALIGN(16);
   }
+  .stacks : {
+      . = ALIGN(16);
+      PROVIDE(__stacks_start = .);
+      . = . + 4096 * 2; /* NHARTS, unstable */
+      PROVIDE(__stacks_end = .);
+      . = ALIGN(16);
+  }
   .bss : {
       . = ALIGN(16);
       *(.sbss .sbss.*)

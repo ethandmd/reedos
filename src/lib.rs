@@ -100,7 +100,9 @@ fn main() -> ! {
         kpgtbl.unwrap().write_satp();
         log!(Info, "Initialized the kernel page table...");
     } else {
-        kpgtbl.unwrap().write_satp();
+        // kpgtbl.unwrap().write_satp();
+        // When the other harts wake up they can set this then
+
         trap::init();
     }
 

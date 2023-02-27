@@ -27,11 +27,10 @@ global_asm!(
         la gp, __global_pointer
     .option pop
         # Set up stack per # of hart ids
-        li t0, 0x0
         li t0, 0x1000 # = 4096
         li t1, 0x2 # For param::NHART == 2...this is unstable.
         mul t0, t0, t1 # 4096 * NHART
-        la sp, __bss_end
+        la sp, __stacks_start
         add sp, sp, t0 # Setup stack ptr at offset + end of .bss
 
         # Add 4k guard page per hart
@@ -40,7 +39,7 @@ global_asm!(
         addi a1, a1, 1
         mul a0, a0, a1
         add sp, sp, a0
-        
+
         # Jump to _start in src/main.rs
         call _start
     spin:
