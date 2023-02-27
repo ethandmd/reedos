@@ -16,7 +16,7 @@ pub mod lock;
 pub mod trap;
 pub mod device;
 pub mod vm;
-pub mod alloc;
+//pub mod alloc;
 
 use crate::hw::riscv::*;
 use crate::hw::param;
