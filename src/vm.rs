@@ -5,17 +5,23 @@ use palloc::*;
 use ptable::kpage_init;
 use crate::hw::param::*;
 
-static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut();
+static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
+
+type VirtAddress = usize;
+type PhysAddress = *mut usize;
+
 
 #[derive(Debug)]
-enum PallocError {
+enum VmError {
+    OutOfPages,
+    PartialPalloc,
     PallocFail,
     PfreeFail,
 }
 
 trait Palloc {
-    fn palloc(&mut self, size: usize) -> Result<Page, PallocError>;
-    fn pfree(&mut self, size: usize) -> Result<(), PallocError>;
+    fn palloc(&mut self) -> Result<Page, VmError>;
+    fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
 
 pub fn init() {
@@ -25,5 +31,5 @@ pub fn init() {
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
-    // kpage_init();
+    kpage_init();
 }
