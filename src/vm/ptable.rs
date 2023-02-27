@@ -3,7 +3,7 @@
 use core::assert;
 use crate::vm::*;
 use crate::hw::param::*;
-use crate::hw::riscv::write_satp;
+use crate::hw::riscv::{write_satp, flush_tlb};
 
 const VA_TOP: usize = 1 << (27 + 12); // 2^27 VPN + 12 Offset
 const PTE_TOP: usize = 512; // 4Kb / 8 byte PTEs = 512 PTEs / page!
@@ -23,7 +23,7 @@ pub type SATPAddress = usize;
 
 #[derive(Copy, Clone)]
 #[repr(C)]
-struct PageTable {
+pub struct PageTable {
     base: PhysAddress, // Page Table located at base address.
 }
 
@@ -87,6 +87,11 @@ impl PageTable {
             get_phy_offset(self.base, idx)
         }
     }
+    pub fn write_satp(&self) {
+        flush_tlb();
+        write_satp(PhyToSATP!(self.base));
+        flush_tlb();
+    }
 }
 
 // Get the address of the PTE for va given the page table pt.
@@ -146,35 +151,41 @@ fn page_map(pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, f
 }
 
 // Initialize kernel page table 
-pub fn kpage_init() {
+pub fn kpage_init() -> Result<PageTable, VmError> {
     let base = unsafe { (*PAGEPOOL).palloc().expect("Couldn't allocate root kernel page table.") };
     //log!(Debug, "Kernel page table base addr: {:#02x}", base.addr.addr());
     let mut kpage_table = PageTable { base: base.addr as *mut usize };
 
-    _ = page_map(
+    if let Err(uart_map) = page_map(
         &mut kpage_table, 
         UART_BASE as *mut usize, 
         UART_BASE as *mut usize, 
         PAGE_SIZE, 
-        PTE_READ | PTE_WRITE);
+        PTE_READ | PTE_WRITE) {
+        return Err(uart_map);
+    }
+
     log!(Debug, "Successfully mapped UART into kernel pgtable...");
 
-    _ = page_map(
+    if let Err(kernel_text) = page_map(
         &mut kpage_table, 
         DRAM_BASE, 
         DRAM_BASE as *mut usize, 
         text_end().addr() - DRAM_BASE.addr(), 
-        PTE_READ | PTE_EXEC);
+        PTE_READ | PTE_EXEC) {
+        return Err(kernel_text)
+    }
     log!(Debug, "Succesfully mapped kernel text into kernel pgtable...");
 
-    _ = page_map(
+    if let Err(heap_map) = page_map(
         &mut kpage_table, 
         text_end(), 
         text_end(), 
         dram_end().addr() - text_end().addr(), 
-        PTE_READ | PTE_WRITE);
+        PTE_READ | PTE_WRITE) {
+        return Err(heap_map)
+    }
     log!(Debug, "Succesfully mapped kernel heap...");
 
-    // SFENCE.VMA Instruction here? After?
-    write_satp(PhyToSATP!(kpage_table.base));
+    Ok(kpage_table)
 }
