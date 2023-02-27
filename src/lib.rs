@@ -20,6 +20,7 @@ pub mod vm;
 
 use crate::hw::riscv::*;
 use crate::hw::param;
+use crate::vm::ptable::PageTable;
 use crate::device::uart;
 
 // The never type "!" means diverging function (never returns).
@@ -87,6 +88,7 @@ pub extern "C" fn _start() {
 fn main() -> ! {
     // We only bootstrap on hart0.
     let id = read_tp();
+    let mut kpgtbl: Option<PageTable> = None;
     if id == 0 {
         uart::Uart::init();
         println!("{}", param::BANNER);
@@ -94,9 +96,11 @@ fn main() -> ! {
         trap::init();
         log!(Info, "Finished trap init...");
         println!("{:#02x}", param::bss_end().addr());
-        vm::init();
+        kpgtbl = Some(vm::init().expect("Failed to setup kernel page table."));
+        kpgtbl.unwrap().write_satp();
         log!(Info, "Initialized the kernel page table...");
     } else {
+        kpgtbl.unwrap().write_satp();
         trap::init();
     }
 
