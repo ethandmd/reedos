@@ -33,7 +33,6 @@ struct FreeNode {
 }
 
 // TODO: Add methods to manipulate this address without pub addr field.
-#[derive(PartialEq, PartialOrd, Eq, Ord)]
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Page {
