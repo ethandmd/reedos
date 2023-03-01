@@ -63,6 +63,12 @@ macro_rules! PhyToSATP {
     }
 }
 
+macro_rules! PageAlignDown {
+    ($p:expr) => {
+        ($p).map_addr(|addr| addr & !(PAGE_SIZE - 1))
+    }
+}
+
 // Read the memory at location self + index * 8 bytes
 unsafe fn get_phy_offset(phy: PhysAddress, index: usize) ->  *mut PTEntry {
     phy.byte_add(index * 8)
@@ -71,6 +77,12 @@ unsafe fn get_phy_offset(phy: PhysAddress, index: usize) ->  *mut PTEntry {
 fn set_pte(pte: *mut PTEntry, contents: PTEntry) {
     unsafe {
         pte.write_volatile(contents);
+    }
+}
+
+fn read_pte(pte: *mut PTEntry) -> PTEntry {
+    unsafe {
+        pte.read_volatile()
     }
 }
 
@@ -128,25 +140,20 @@ unsafe fn walk(pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut 
 
 /// Maps some number of pages into the VM given by pt of byte length
 /// size. 
-///
-/// Rounds down va and size to page size multiples. 
 fn page_map(pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
-    // Round up to next page aligned boundary (multiple of pg size).
-    let start = va.map_addr(|addr| addr + (PAGE_SIZE - 1) & !(PAGE_SIZE - 1));
-    let num_pages = ((size + (PAGE_SIZE - 1)) & !(PAGE_SIZE - 1)) >> 12;
-   
-    for i in 0..num_pages {
-        match unsafe { walk(pt, start.map_addr(|addr| addr + (4096 * i)), true) } {
-            Ok(pte) => {
-                set_pte(pte, PteSetFlag!(PhyToPte!(pa.map_addr(|addr| addr + PAGE_SIZE*i)), flag | PTE_VALID)); 
-            },
-            Err(e) => {
-                log!(Error, "{:?}", e);
-                panic!();
-            }
-        }
-        
+    // Round down to page aligned boundary (multiple of pg size).
+    let mut start = PageAlignDown!(va);
+    let mut phys = pa;
+    let end = PageAlignDown!(va.map_addr(|addr| addr + (size-1)));
+    
+    while start < end {
+        let pte_addr = unsafe { walk(pt, start, true)? };
+        if read_pte(pte_addr) & PTE_VALID != 0 { return Err(VmError::PallocFail); }
+        set_pte(pte_addr, PteSetFlag!(PhyToPte!(phys), flag | PTE_VALID)); 
+        start = start.map_addr(|addr| addr + PAGE_SIZE);
+        phys = phys.map_addr(|addr| addr + PAGE_SIZE);
     }
+    
     Ok(())
 }
 
