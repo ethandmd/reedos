@@ -95,11 +95,11 @@ fn main() -> ! {
         trap::init();
         log!(Info, "Finished trap init...");
         println!("{:#02x}", param::bss_end().addr());
-        let kpgtbl = vm::init().expect("Failed to setup kernel page table.");
-        kpgtbl.write_satp();
+        vm::init();
+        unsafe { (*vm::KPGTABLE).write_satp(); }
         //log!(Info, "Initialized the kernel page table...");
     } else {
-        // kpgtbl.unwrap().write_satp();
+        unsafe { (*vm::KPGTABLE).write_satp(); }
         // When the other harts wake up they can set this then
 
         trap::init();

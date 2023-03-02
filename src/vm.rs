@@ -6,6 +6,8 @@ use ptable::{kpage_init, PageTable};
 use crate::hw::param::*;
 
 static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
+pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut(); 
+
 
 type VirtAddress = usize;
 type PhysAddress = *mut usize;
@@ -24,12 +26,15 @@ trait Palloc {
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
 
-pub fn init() -> Result<PageTable, VmError> {
+pub fn init() {
     unsafe {
         PAGEPOOL = &mut PagePool::new(bss_end(), dram_end());
     }
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
-    kpage_init()
+    match kpage_init() {
+        Ok(mut pt) => unsafe { KPGTABLE = &mut pt; },
+        Err(_) => { panic!(); }
+    }
 }
