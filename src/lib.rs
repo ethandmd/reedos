@@ -6,9 +6,10 @@
 #![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
+
+#![allow(dead_code)]
 use core::panic::PanicInfo;
 
-pub mod entry;
 #[macro_use]
 pub mod log;
 pub mod hw;
@@ -30,7 +31,7 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 /// This gets called from src/entry.rs and runs on each hart.
-/// Run configuration steps that will allow us to run the 
+/// Run configuration steps that will allow us to run the
 /// kernel in supervisor mode.
 ///
 /// This is referenced from the xv6-riscv kernel.
@@ -38,16 +39,16 @@ fn panic(info: &PanicInfo) -> ! {
 pub extern "C" fn _start() {
     // xv6-riscv/kernel/start.c
     let fn_main = main as *const ();
-    
+
     // Set the *prior* privilege mode to supervisor.
     // Bits 12, 11 are for MPP. They are WPRI.
     // For sstatus we can write SPP reg, bit 8.
     let mut ms = read_mstatus();
     ms &= !MSTATUS_MPP_MASK;
-    ms |= MSTATUS_MPP_S; 
+    ms |= MSTATUS_MPP_S;
     write_mstatus(ms);
 
-    // Set machine exception prog counter to 
+    // Set machine exception prog counter to
     // our main function for later mret call.
     write_mepc(fn_main);
 
@@ -71,7 +72,7 @@ pub extern "C" fn _start() {
     // Store each hart's hartid in its tp reg for identification.
     let hartid = read_mhartid();
     write_tp(hartid);
-    
+
     // Get interrupts from clock and set mtev handler fn.
     hw::timerinit();
 
