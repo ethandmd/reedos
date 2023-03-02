@@ -25,9 +25,10 @@ $(LIBREEDOS): .FORCE
 
 # can't use automatic variables for dependencies, because we don't
 # want to mix kernel.ld with the rest
+# For reasons I don't understand, this order works and many others don't
 build: kernel.ld $(LIBREEDOS) src/asm/entry.o src/asm/trap.o .FORCE
-	$(LINKER) -Tkernel.ld \
-		$(LIBREEDOS) src/asm/entry.o src/asm/trap.o -o reedos.ELF
+	$(LINKER) -Tkernel.ld -o reedos.ELF \
+		src/asm/entry.o src/asm/trap.o $(LIBREEDOS)
 
 # other nice stuff
 lint:
