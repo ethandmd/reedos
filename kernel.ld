@@ -14,6 +14,7 @@ SECTIONS
       *(.text .text.*)
       /*. = ALIGN(0x1000);*/
       PROVIDE(__text_end = .);
+      PROVIDE(_etext = .);
   }
 
   PROVIDE(__global_pointer = .);
@@ -30,6 +31,7 @@ SECTIONS
       *(.data .data.*)
       . = ALIGN(16);
   }
+  PROVIDE(_edata = .);
   .stacks : {
       . = ALIGN(16);
       PROVIDE(__stacks_start = .);
@@ -45,5 +47,6 @@ SECTIONS
   }
   . = ALIGN(0x1000);
   PROVIDE(__bss_end = .);
+  PROVIDE(_end = .);
   PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram));
 }
