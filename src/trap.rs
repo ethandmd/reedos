@@ -21,7 +21,7 @@ pub fn init() {
 
     match mcause {
         riscv::MSTATUS_TIMER => {
-            log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
+            // log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
             clint::set_mtimecmp(10_000_000);
         },
         _ => {

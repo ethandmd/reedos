@@ -22,22 +22,19 @@
     .option push
     .option norelax
         # Linker position data relative to gp
+    .extern __global_pointer
         la gp, __global_pointer
     .option pop
-        # Set up stack per of hart ids
-        li t0, 0x1000 # = 4096
-        li t1, 0x2
-        # For param::NHART == 2...this is unstable.
-        mul t0, t0, t1 # 4096 * NHART
-        la sp, __stacks_start
-        add sp, sp, t0 # Setup stack ptr at offset + end of .bss
+        # Set up stack per of hart ids according to linker script
 
         # Add 4k guard page per hart
-        li a0, 0x1000
         csrr a1, mhartid
-        addi a1, a1, 1
-        mul a0, a0, a1
-        add sp, sp, a0
+        sll a1, a1, 1 # Multiple hartid by 2 to get alternating pages
+        li a0, 0x1000
+        mul a1, a1, a0
+    .extern __stacks_end # Linker supplied
+        la a2, __stacks_end
+        sub sp, a2, a1
 
         # Jump to _start in src/main.rs
         .extern _start

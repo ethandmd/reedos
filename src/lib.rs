@@ -26,7 +26,21 @@ use crate::device::uart;
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
-    println!("PANIC! {:?}", info.message());
+    let default = format_args!("No message provided");
+    let msg = match info.message() {
+        Some(msg) => msg,
+        None => {
+           &default
+        }
+    };
+    match info.location() {
+        None => {
+            println!("PANIC! {} at {}", msg, "No location provided");
+        },
+        Some(loc) => {
+            println!("PANIC! {} at {}:{}", msg, loc.file(), loc.line());
+        }
+    }
     loop {}
 }
 
@@ -94,10 +108,9 @@ fn main() -> ! {
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
         log!(Info, "Finished trap init...");
-        println!("{:#02x}", param::bss_end().addr());
         vm::init();
         unsafe { (*vm::KPGTABLE).write_satp(); }
-        //log!(Info, "Initialized the kernel page table...");
+        log!(Info, "Initialized the kernel page table...");
     } else {
         unsafe { (*vm::KPGTABLE).write_satp(); }
         // When the other harts wake up they can set this then
