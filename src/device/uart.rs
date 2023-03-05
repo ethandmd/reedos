@@ -2,8 +2,8 @@
 // Referenced from:
 // https://github.com/mit-pdos/xv6-riscv/blob/riscv/kernel/uart.c
 // from https://github.com/sgmarz/osblog/tree/master/risc_v/src
-use core::fmt::Write;
 use core::fmt::Error;
+use core::fmt::Write;
 
 use crate::hw::param::UART_BASE;
 use crate::lock::mutex::*;
@@ -11,7 +11,7 @@ use crate::lock::mutex::*;
 const IER: usize = 1; // Interrupt Enable Register
 const LCR: usize = 3; // Line Control Register (baud rate stuff)
 const FCR: usize = 2; // FIFO Control Register (see uart layout in reference)
-//const LSR: usize = 2; // Line Status Register (ready to rx, ready to tx signals) 
+                      //const LSR: usize = 2; // Line Status Register (ready to rx, ready to tx signals)
 
 pub static WRITER: Mutex<Uart> = Uart::new();
 
@@ -47,19 +47,19 @@ impl Uart {
             // baud rate of 38.4k
             ptr.add(0).write_volatile(0x03); // LSB (tx side)
             ptr.add(1).write_volatile(0x00); // MST (rx side)
-            // 8 bit words (no parity)
-            ptr.add(LCR).write_volatile(3); 
+                                             // 8 bit words (no parity)
+            ptr.add(LCR).write_volatile(3);
             // Enabse and clear FIFO
-            ptr.add(FCR).write_volatile( 1<< 0 | 3 << 1);
+            ptr.add(FCR).write_volatile(1 << 0 | 3 << 1);
             // Enable tx and rx interrupts
-            ptr.add(IER).write_volatile( 1 << 1 | 1 << 0);
+            ptr.add(IER).write_volatile(1 << 1 | 1 << 0);
         }
     }
 
     pub const fn new() -> Mutex<Self> {
-        Mutex::new(Uart { 
-                base_address: UART_BASE 
-            })
+        Mutex::new(Uart {
+            base_address: UART_BASE,
+        })
     }
 
     pub fn put(&mut self, c: u8) {
