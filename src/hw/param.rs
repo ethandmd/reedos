@@ -45,65 +45,47 @@ extern "C" {
     static mut __stacks_end: usize;
 }
 
-
 // Memlayout params
 pub const CLINT_BASE: usize = 0x2000000;
 pub const UART_BASE: usize = 0x10000000;
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
 pub fn text_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__text_end)
-    }
+    unsafe { addr_of_mut!(__text_end) }
 }
 
 pub fn bss_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__bss_end)
-    }
+    unsafe { addr_of_mut!(__bss_end) }
 }
 
 pub fn bss_start() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__bss_start)
-    }
+    unsafe { addr_of_mut!(__bss_start) }
 }
 
 pub fn rodata_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(_roedata)
-    }
+    unsafe { addr_of_mut!(_roedata) }
 }
 
 pub fn data_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(_edata)
-    }
+    unsafe { addr_of_mut!(_edata) }
 }
 
 pub fn stacks_start() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__stacks_start)
-    }
+    unsafe { addr_of_mut!(__stacks_start) }
 }
 
 pub fn stacks_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__stacks_end)
-    }
+    unsafe { addr_of_mut!(__stacks_end) }
 }
 
 pub fn dram_end() -> *mut usize {
-    unsafe {
-        addr_of_mut!(__memory_end)
-    }
+    unsafe { addr_of_mut!(__memory_end) }
 }
 
 pub static PAGE_SIZE: usize = 4096;
 
 // Run parameters
 pub const NHART: usize = 2;
-
 
 // Unnecessary.
 pub static BANNER: &'static str = r#"

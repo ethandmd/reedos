@@ -8,17 +8,17 @@ pub const MSTATUS_MPP_S: u64 = 1 << 11; // Supervisor
 pub const MSTATUS_MPP_U: u64 = 0 << 11; // User
 pub const MSTATUS_MIE: u64 = 1 << 3; // machine-mode interrupt enable.
 pub const MSTATUS_TIMER: u64 = (1 << 63) | (7); // mcause for machine mode timer.
-// sstatus := Supervisor status reg.
-pub const SSTATUS_SPP: u64 = 1 << 8;  // Previous mode, 1=Supervisor, 0=User
+                                                // sstatus := Supervisor status reg.
+pub const SSTATUS_SPP: u64 = 1 << 8; // Previous mode, 1=Supervisor, 0=User
 pub const SSTATUS_SPIE: u64 = 1 << 5; // Supervisor Previous Interrupt Enable
 pub const SSTATUS_UPIE: u64 = 1 << 4; // User Previous Interrupt Enable
-pub const SSTATUS_SIE: u64 = 1 << 1;  // Supervisor Interrupt Enable
-pub const SSTATUS_UIE: u64 = 1 << 0;  // User Interrupt Enable
+pub const SSTATUS_SIE: u64 = 1 << 1; // Supervisor Interrupt Enable
+pub const SSTATUS_UIE: u64 = 1 << 0; // User Interrupt Enable
 
 // Machine-mode Interrupt Enable
 pub const MIE_MEIE: u64 = 1 << 11; // external
 pub const MIE_MTIE: u64 = 1 << 7; // timer
-pub const MIE_MSIE: u64 = 1 << 3;  // software
+pub const MIE_MSIE: u64 = 1 << 3; // software
 
 // Supervisor Interrupt Enable
 pub const SIE_SEIE: u64 = 1 << 9; // external
@@ -100,7 +100,7 @@ pub fn write_status(status: u64) {
     }
 }
 
-// Enable sup mode interrupt and exception. 
+// Enable sup mode interrupt and exception.
 pub fn read_sip() -> u64 {
     let x: u64;
     unsafe {
@@ -143,7 +143,6 @@ pub fn write_mie(x: u64) {
     }
 }
 
-
 // For reference:
 // SATP Sv39 mode: (8L << 60)
 // From addr to satp reg: (pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
@@ -155,11 +154,11 @@ pub fn read_satp() -> usize {
     pt
 }
 
- pub fn write_satp(pt: usize) {
-     unsafe {
-         asm!("csrw satp, {}", in(reg) pt);
-     }
- }
+pub fn write_satp(pt: usize) {
+    unsafe {
+        asm!("csrw satp, {}", in(reg) pt);
+    }
+}
 
 // medeleg := machine exception delegation (to supervisor mode)
 // mideleg := machine interrupt delegation (to supervisor mode)
@@ -191,7 +190,7 @@ pub fn write_mideleg(mid: u64) {
     }
 }
 
-// pmpaddr := phys mem protection addr. 
+// pmpaddr := phys mem protection addr.
 // Configure to give supervisor mode access to
 // certain parts of memory.
 pub fn write_pmpaddr0(addr: u64) {
@@ -224,7 +223,7 @@ pub fn read_pmpcfg0() -> usize {
 
 // Just for curiosity's sake:
 // https://github.com/rust-lang/rust/issues/82753
-// 
+//
 // tp := thread pointer?
 // This way we can query a hart's hartid and store it in tp reg.
 pub fn write_tp(id: u64) {
