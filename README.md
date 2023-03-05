@@ -5,7 +5,8 @@ See [Contribution Guidelines](CONTRIBUTING.md) if you're interested in getting i
 
 ## Setup
 In order to get started with this project you'll need the following:
-- Rust (No guarantees this compiles <= 1.67, works on stable at the moment.)
+- Rust `rustc 1.69.0-nightly (c5c7d2b37 2023-02-24)` <-- the pointer arithmetic stuff will break.
+- QEMU compiled for riscv
 - `riscv-gnu-toolchain` (don't forget to add to PATH)
 - `rustup target add riscv64gc-unkown-none-elf`
 ## Usage
@@ -24,8 +25,8 @@ You may find the following debug tools (that you have mostly already installed) 
  + `$ cargo docs` build docs.
 
 ### References
-+ https://riscv.org/technical/specifications/ (Go to "Volume 2, Privileged Specification")
-+ https://five-embeddev.com/riscv-isa-manual/latest/csr.html
-+ https://github.com/mit-pdos/xv6-riscv
-+ https://osblog.stephenmarz.com/index.html
-+ https://os.phil-opp.com/
++ [ISA Manual](https://riscv.org/technical/specifications/) (Go to "Volume 2, Privileged Specification")
++ [Interrupt Cookbook](https://www.starfivetech.com/uploads/sifive-interrupt-cookbook-v1p2.pdf)
++ [MIT's XV6-RISCV](https://github.com/mit-pdos/xv6-riscv)
++ [Marz's OSDEV Blog OS](https://osblog.stephenmarz.com/index.html)
++ [Phil-Opp's Blog OS](https://os.phil-opp.com/)
