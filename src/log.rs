@@ -29,7 +29,6 @@ pub enum LogSeverity {
     Error,
 }
 
-
 // use as `log::log!(Warning, "This is a test of the warning logging!");`
 // in a while that has
 // ```
