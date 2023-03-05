@@ -32,7 +32,7 @@ build: kernel.ld $(LIBREEDOS) src/asm/entry.o src/asm/trap.o .FORCE
 
 # other nice stuff
 lint:
-	rustup component add rustfmt # Not for nightly
+	#rustup component add rustfmt # Not for nightly
 	cargo fmt --all -- --check #Add config
 	cargo clippy
 
