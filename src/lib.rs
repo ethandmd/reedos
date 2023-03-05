@@ -6,22 +6,21 @@
 #![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
-
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 
 #[macro_use]
 pub mod log;
+pub mod device;
 pub mod hw;
 pub mod lock;
 pub mod trap;
-pub mod device;
 pub mod vm;
 //pub mod alloc;
 
-use crate::hw::riscv::*;
-use crate::hw::param;
 use crate::device::uart;
+use crate::hw::param;
+use crate::hw::riscv::*;
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -29,14 +28,12 @@ fn panic(info: &PanicInfo) -> ! {
     let default = format_args!("No message provided");
     let msg = match info.message() {
         Some(msg) => msg,
-        None => {
-           &default
-        }
+        None => &default,
     };
     match info.location() {
         None => {
             println!("PANIC! {} at {}", msg, "No location provided");
-        },
+        }
         Some(loc) => {
             println!("PANIC! {} at {}:{}", msg, loc.file(), loc.line());
         }
@@ -92,13 +89,11 @@ pub extern "C" fn _start() {
 
     // Now return to sup mode and jump to main().
     call_mret();
-
 }
 
 // Primary kernel bootstrap function.
 // We ensure that we only initialize kernel subsystems
-// one time by only doing so on hart0, and sending
-// any other hart to essentially wait for interrupt (wfi).
+// one time by only doing so on hart0.
 fn main() -> ! {
     // We only bootstrap on hart0.
     let id = read_tp();
@@ -109,12 +104,12 @@ fn main() -> ! {
         trap::init();
         log!(Info, "Finished trap init...");
         vm::init();
-        unsafe { (*vm::KPGTABLE).write_satp(); }
+        unsafe {
+            (*vm::KPGTABLE).write_satp();
+        }
         log!(Info, "Initialized the kernel page table...");
     } else {
-        unsafe { (*vm::KPGTABLE).write_satp(); }
-        // When the other harts wake up they can set this then
-
+        //Interrupt other harts to init kpgtable.
         trap::init();
     }
 
