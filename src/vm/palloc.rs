@@ -1,36 +1,32 @@
-//! Almost like a real physical page allocator but ...
-
-//use core::array::from_fn;
-//use core::cell::SyncUnsafeCell;
-
+//! Physical page allocator
 use crate::hw::param::*;
 use crate::lock::mutex::Mutex;
-//use crate::hw::riscv::read_tp;
 use crate::vm::{Palloc, VmError};
 
+/// Utility function, primarily used to check if addresses are page aligned.
 fn is_multiple(addr: usize, size: usize) -> bool {
     addr & (size - 1) == 0
 }
 
-/// Kernel page pool. Each hart has their own local pool, and there is
-/// a global pool should a given hart's local pool run dry. This local -
-/// global design should reduce lock contention.
+/// Kernel page pool.
 pub struct PagePool {
     pool: Mutex<Pool>, //[Mutex<Pool>; NHART + 1],
 }
 
-/// Characterizes any pool by tracking free pages.
+/// Characterizes a page pool by tracking free pages with a double linked list.
 struct Pool {
     free: Option<Page>, // Head of free page list (stored in the free pages).
     bottom: *mut usize, // Min addr of this page allocation pool.
     top: *mut usize,    // Max addr of this page allocation pool.
 }
 
+/// Convenience struct to read a free page like a doubly linked list.
 struct FreeNode {
     prev: *mut usize,
     next: *mut usize,
 }
 
+/// Abstraction of a physical page of memory.
 // TODO: Add methods to manipulate this address without pub addr field.
 #[derive(Copy, Clone)]
 #[repr(transparent)]
@@ -39,6 +35,8 @@ pub struct Page {
 }
 
 impl Palloc for PagePool {
+    /// Allocate page of physical memory by returning a pointer
+    /// to the allocated page.
     fn palloc(&mut self) -> Result<Page, VmError> {
         let mut pool = self.pool.lock();
         match pool.free {
@@ -47,6 +45,7 @@ impl Palloc for PagePool {
         }
     }
 
+    /// Not Implemented.
     fn pfree(&mut self, _size: usize) -> Result<(), VmError> {
         todo!()
     }
@@ -58,6 +57,7 @@ impl FreeNode {
     }
 }
 
+/// Create a new page from a physical address.
 impl From<*mut usize> for Page {
     fn from(addr: *mut usize) -> Self {
         Page { addr }
@@ -65,6 +65,8 @@ impl From<*mut usize> for Page {
 }
 
 impl Page {
+    /// Create a new page from a physical address.
+    /// Zero the addr + 4096 bytes before returning.
     // Watchout, this zeroes new pages.
     // If you don't want to zero, use From<T>.
     fn new(addr: *mut usize) -> Self {
@@ -74,6 +76,7 @@ impl Page {
         Page { addr }
     }
 
+    /// Zero a page.
     // 'size' is in bytes. write_bytes() takes count * size_of::<T>() in bytes.
     // Since usize is 8 bytes, we want to zero out the page. Aka zero 512 PTEs.
     fn zero(&mut self) {
@@ -82,6 +85,10 @@ impl Page {
         }
     }
 
+    /// Write pointers to the previous and next pointers of the doubly 
+    /// linked list to this page. We use the first 8 bytes of the page to
+    /// store a ptr to the previous page, and the second 8 bytes to
+    /// store a ptr to the next page.
     // Takes a free page and writes the previous free page's addr in
     // the first 8 bytes. Then writes the next free page's addr in the
     // following 8 bytes.
@@ -90,18 +97,21 @@ impl Page {
         self.write_next(free_node.next);
     }
 
+    /// Write the next pointer of the doubly linked list to this page.
     fn write_next(&mut self, next: *mut usize) {
         unsafe {
             self.addr.add(1).write_volatile(next.addr());
         }
     }
 
+    /// Write the previous pointer of the doubly linked list to this page.
     fn write_prev(&mut self, prev: *mut usize) {
         unsafe {
             self.addr.write_volatile(prev.addr());
         }
     }
 
+    /// Read the prev, next pointers of a page in the free list.
     fn read_free(&mut self) -> FreeNode {
         unsafe {
             FreeNode::new(
@@ -113,6 +123,8 @@ impl Page {
 }
 
 impl Pool {
+    /// Setup a doubly linked list of chunks from the bottom to top addresses.
+    /// Assume chunk will generally be PAGE_SIZE.
     fn new(bottom: *mut usize, top: *mut usize, chunk_size: usize) -> Self {
         // Set up head of the free list.
         let mut free = Page::new(bottom);
@@ -142,6 +154,10 @@ impl Pool {
         }
     }
 
+    /// Remove the current head of the doubly linked list and replace it
+    /// with the next free page in the list.
+    /// If this is the last free page in the pool, set the free pool to None
+    /// in order to trigger the OutOfPages error.
     fn alloc_page(&mut self, mut page: Page) -> Result<Page, VmError> {
         let free_node = page.read_free();
         let prev = free_node.prev;
@@ -165,6 +181,7 @@ impl Pool {
 }
 
 impl PagePool {
+    /// Create a new pool within a mutex spinlock.
     pub fn new(bottom: *mut usize, top: *mut usize) -> Self {
         assert!(is_multiple(bottom.addr(), PAGE_SIZE));
         assert!(is_multiple(top.addr(), PAGE_SIZE));

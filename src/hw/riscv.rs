@@ -1,7 +1,7 @@
 //! Rust wrappers around RISC-V routines
 use core::arch::asm;
 
-// MPP := Machine previous protection mode.
+/// Machine previous protection mode.
 pub const MSTATUS_MPP_MASK: u64 = 3 << 11; // Mask for bit tricks
 pub const MSTATUS_MPP_M: u64 = 3 << 11; // Machine
 pub const MSTATUS_MPP_S: u64 = 1 << 11; // Supervisor
@@ -15,19 +15,17 @@ pub const SSTATUS_UPIE: u64 = 1 << 4; // User Previous Interrupt Enable
 pub const SSTATUS_SIE: u64 = 1 << 1; // Supervisor Interrupt Enable
 pub const SSTATUS_UIE: u64 = 1 << 0; // User Interrupt Enable
 
-// Machine-mode Interrupt Enable
+/// Machine-mode Interrupt Enable
 pub const MIE_MEIE: u64 = 1 << 11; // external
 pub const MIE_MTIE: u64 = 1 << 7; // timer
 pub const MIE_MSIE: u64 = 1 << 3; // software
 
-// Supervisor Interrupt Enable
+/// Supervisor Interrupt Enable
 pub const SIE_SEIE: u64 = 1 << 9; // external
 pub const SIE_STIE: u64 = 1 << 5; // timer
 pub const SIE_SSIE: u64 = 1 << 1; // software
 
-// Return id of current hart.
-// the "m" in "mstatus" means machine mode.
-// Note mstatus -> sstatus reg for supervisor mode.
+/// Return id of current hart while in machine mode.
 pub fn read_mhartid() -> u64 {
     let id: u64;
     // Volatile by default?
@@ -37,8 +35,8 @@ pub fn read_mhartid() -> u64 {
     id
 }
 
-// Read CSR := Control and Status Register mstatus.
-// Refer to chap 9 of riscv isa manual for info on CSRs.
+/// Read CSR := Control and Status Register mstatus.
+/// Refer to chap 9 of riscv isa manual for info on CSRs.
 pub fn read_mstatus() -> u64 {
     let status: u64;
     unsafe {
@@ -54,6 +52,7 @@ pub fn write_mstatus(status: u64) {
     }
 }
 
+/// Read the integer encoded 'reason' why a trap was called (machine mode).
 pub fn read_mcause() -> u64 {
     let cause: u64;
     unsafe {
@@ -62,6 +61,7 @@ pub fn read_mcause() -> u64 {
     cause
 }
 
+/// Read the integer encoded 'reason' why a trap was called (supervisor mode).
 pub fn read_scause() -> u64 {
     let cause: u64;
     unsafe {
@@ -70,8 +70,8 @@ pub fn read_scause() -> u64 {
     cause
 }
 
-// Set mepc := machine exception program counter.
-// a.k.a. what instr (address) to go to from exception.
+/// Set mepc := machine exception program counter.
+/// (what instr (address) to go to from exception.)
 pub fn write_mepc(addr: *const ()) {
     unsafe {
         asm!("csrw mepc, {}", in(reg) addr);
@@ -142,9 +142,8 @@ pub fn write_mie(x: u64) {
         asm!("csrw mie, {}", in(reg) x);
     }
 }
-
-// For reference:
-// SATP Sv39 mode: (8L << 60)
+ 
+/// SATP Sv39 mode: (8L << 60)
 // From addr to satp reg: (pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 pub fn read_satp() -> usize {
     let pt: usize;
@@ -160,8 +159,7 @@ pub fn write_satp(pt: usize) {
     }
 }
 
-// medeleg := machine exception delegation (to supervisor mode)
-// mideleg := machine interrupt delegation (to supervisor mode)
+/// medeleg := machine exception delegation (to supervisor mode)
 pub fn read_medeleg() -> u64 {
     let med: u64;
     unsafe {
@@ -176,6 +174,7 @@ pub fn write_medeleg(med: u64) {
     }
 }
 
+/// mideleg := machine interrupt delegation (to supervisor mode)
 pub fn read_mideleg() -> u64 {
     let mid: u64;
     unsafe {
@@ -190,9 +189,9 @@ pub fn write_mideleg(mid: u64) {
     }
 }
 
-// pmpaddr := phys mem protection addr.
-// Configure to give supervisor mode access to
-// certain parts of memory.
+/// pmpaddr := phys mem protection addr.
+/// Configure to give supervisor mode access to
+/// certain parts of memory.
 pub fn write_pmpaddr0(addr: u64) {
     unsafe {
         asm!("csrw pmpaddr0, {}", in(reg) addr);
@@ -221,11 +220,10 @@ pub fn read_pmpcfg0() -> usize {
     addr
 }
 
-// Just for curiosity's sake:
-// https://github.com/rust-lang/rust/issues/82753
-//
-// tp := thread pointer?
-// This way we can query a hart's hartid and store it in tp reg.
+/// Just for curiosity's sake:
+/// https://github.com/rust-lang/rust/issues/82753
+/// tp := thread pointer register.
+/// This way we can query a hart's hartid and store it in tp reg.
 pub fn write_tp(id: u64) {
     unsafe {
         asm!("mv tp, {}", in(reg) id);
@@ -287,6 +285,8 @@ pub fn read_stvec() -> usize {
     addr
 }
 
+/// The `zero, zero` arguments to `sfence.vma` insn mean
+/// we completely flush every TLB entry for all ASIDs.
 pub fn flush_tlb() {
     unsafe {
         asm!("sfence.vma zero, zero");

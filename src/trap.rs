@@ -1,3 +1,4 @@
+//! Kernel trap handlers.
 use crate::device::clint;
 use crate::hw::riscv;
 
@@ -12,10 +13,12 @@ extern "C" {
     pub fn __strapvec();
 }
 
+/// Write the supervisor trap vector to stvec register on each hart.
 pub fn init() {
     riscv::write_stvec(__strapvec as usize);
 }
 
+/// Machine mode trap handler.
 #[no_mangle]
 pub extern "C" fn m_handler() {
     let mcause = riscv::read_mcause();
@@ -36,6 +39,7 @@ pub extern "C" fn m_handler() {
     }
 }
 
+/// Supervisor mode trap handler.
 #[no_mangle]
 pub extern "C" fn s_handler() {
     let cause = riscv::read_scause();

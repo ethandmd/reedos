@@ -1,3 +1,4 @@
+//! Target-hardware parameters and utilities.
 pub mod param;
 pub mod riscv;
 
@@ -5,12 +6,11 @@ use crate::device::clint;
 use crate::trap;
 use riscv::*;
 
-// Sets up the core local interrupt controller on each hart.
-// We set up CLINT per hart before we start bootstrapping so
-// we can handle interrupts in supervisor mode (as opposed to
-// machine mode).
+/// Set up and enable the core local interrupt controller on each hart.
+/// We write the machine mode trap vector register (mtvec) with the address
+/// of our `src/asm` trap handler function.
 pub fn timerinit() {
-    let interval = 10_000_000;
+    let interval = 10_000_000; // May want to speed this up in the future.
     clint::set_mtimecmp(interval);
 
     // Set the machine trap vector to hold fn ptr to timervec.

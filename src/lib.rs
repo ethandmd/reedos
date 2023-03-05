@@ -41,11 +41,9 @@ fn panic(info: &PanicInfo) -> ! {
     loop {}
 }
 
-/// This gets called from src/entry.rs and runs on each hart.
+/// This gets called from entry.S and runs on each hart.
 /// Run configuration steps that will allow us to run the
 /// kernel in supervisor mode.
-///
-/// This is referenced from the xv6-riscv kernel.
 #[no_mangle]
 pub extern "C" fn _start() {
     // xv6-riscv/kernel/start.c

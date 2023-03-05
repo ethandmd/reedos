@@ -1,3 +1,4 @@
+//! Page table
 // VA: 39bits, PA: 56bits
 // PTE size = 8 bytes
 use crate::hw::param::*;
@@ -19,8 +20,14 @@ const PTE_DIRTY: usize = 1 << 7;
 type VirtAddress = *mut usize;
 type PhysAddress = *mut usize;
 type PTEntry = usize;
+/// Supervisor Address Translation and Protection.
+/// Section 4.1.12 of risc-v priviliged ISA manual.
 pub type SATPAddress = usize;
 
+/// Abstraction of a page table at a physical address.
+/// Notice we didn't use a rust array here, instead
+/// implementing our own indexing methods, functionally
+/// similar to that of an array.
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct PageTable {
@@ -170,7 +177,13 @@ fn page_map(
     Ok(())
 }
 
-// Initialize kernel page table
+/// Create the kernel page table with 1:1 mappings to physical memory.
+/// First allocate a new page for the kernel page table.
+/// Next, map memory mapped I/O devices to the kernel page table.
+/// Then map the kernel .text, .data, .rodata and .bss sections.
+/// Additionally, map a stack+guard page for each hart.
+/// Finally map, the remaining physical memory to kernel virtual memory as
+/// the kernel 'heap'.
 pub fn kpage_init() -> Result<PageTable, VmError> {
     let base = unsafe {
         (*PAGEPOOL)

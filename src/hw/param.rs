@@ -45,9 +45,13 @@ extern "C" {
     static mut __stacks_end: usize;
 }
 
-// Memlayout params
+/// CLINT base address.
 pub const CLINT_BASE: usize = 0x2000000;
+
+/// UART base adderss.
 pub const UART_BASE: usize = 0x10000000;
+
+/// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
 pub fn text_end() -> *mut usize {

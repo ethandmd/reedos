@@ -1,7 +1,8 @@
-//! Setup for s/w timer interrupts.
+//! Core local interruptor (timer interrupts).
 use crate::hw::param;
 use crate::hw::riscv;
 
+/// Get the current CLINT time.
 pub fn read_mtime() -> u64 {
     let base = param::CLINT_BASE as *mut u64;
     let mtime: u64;
@@ -11,6 +12,9 @@ pub fn read_mtime() -> u64 {
     mtime
 }
 
+/// Set the CLINT MTIMECMP register.
+/// When CLINT MTIME >= CLINT MTIMECMP it triggers
+/// a *machine*-mode interrupt.
 // mtimecmp reg is at base + 0x4000
 // mtime reg is base + 0xbff8
 pub fn set_mtimecmp(interval: u64) {

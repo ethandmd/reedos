@@ -1,13 +1,14 @@
 //! Spinlock mutex implementation
-// Inspiration taken in no small part from the awesome:
-// + https://marabos.nl/atomics/building-locks.html#mutex
-// as well as:
-// + https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
-//
-// Opportunity for improvement on locking mechanism.
+/// Inspiration taken in no small part from the awesome:
+/// + https://marabos.nl/atomics/building-locks.html#mutex
+/// as well as:
+/// + https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
+///
+/// Opportunity for improvement on interrupt safe locks. 
 use core::cell::UnsafeCell;
 use core::sync::atomic::*;
 
+/// Returned from successfully locking a mutex.
 pub struct MutexGuard<'a, T> {
     mutex: &'a Mutex<T>,
 }
@@ -34,9 +35,9 @@ impl<T> core::ops::Drop for MutexGuard<'_, T> {
     }
 }
 
-// Simple mutex implementation.
-// 1. Try to acquire mutex for critical section.
-// 2. If unable, spin.
+/// Simple mutex implementation.
+/// 1. Try to acquire mutex for critical section.
+/// 2. If unable, spin.
 pub struct Mutex<T> {
     lock_state: AtomicU32, // (0,1) = (unlocked, locked)
     inner: UnsafeCell<T>,
@@ -45,7 +46,7 @@ pub struct Mutex<T> {
 unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    // https://doc.rust-lang.org/reference/const_eval.html
+    /// https://doc.rust-lang.org/reference/const_eval.html
     pub const fn new(value: T) -> Self {
         Mutex {
             lock_state: AtomicU32::new(0),
@@ -53,9 +54,9 @@ impl<T> Mutex<T> {
         }
     }
 
-    // Needs to satisfy an atomic swap (acquire)
-    // then a fence so loads and stores aren't reordered until
-    // after lock is acquired.
+    /// Needs to satisfy an atomic swap (acquire)
+    /// then a fence so loads and stores aren't reordered until
+    /// after lock is acquired.
     pub fn lock(&self) -> MutexGuard<T> {
         // Use Acquire memory order to load lock value.
         // TODO:
