@@ -3,17 +3,16 @@
 //use core::array::from_fn;
 //use core::cell::SyncUnsafeCell;
 
-use crate::lock::mutex::Mutex;
 use crate::hw::param::*;
+use crate::lock::mutex::Mutex;
 //use crate::hw::riscv::read_tp;
 use crate::vm::{Palloc, VmError};
-
 
 fn is_multiple(addr: usize, size: usize) -> bool {
     addr & (size - 1) == 0
 }
 
-/// Kernel page pool. Each hart has their own local pool, and there is 
+/// Kernel page pool. Each hart has their own local pool, and there is
 /// a global pool should a given hart's local pool run dry. This local -
 /// global design should reduce lock contention.
 pub struct PagePool {
@@ -22,9 +21,9 @@ pub struct PagePool {
 
 /// Characterizes any pool by tracking free pages.
 struct Pool {
-    free: Option<Page>,         // Head of free page list (stored in the free pages).
-    bottom: *mut usize,         // Min addr of this page allocation pool.
-    top: *mut usize,            // Max addr of this page allocation pool.
+    free: Option<Page>, // Head of free page list (stored in the free pages).
+    bottom: *mut usize, // Min addr of this page allocation pool.
+    top: *mut usize,    // Max addr of this page allocation pool.
 }
 
 struct FreeNode {
@@ -36,7 +35,7 @@ struct FreeNode {
 #[derive(Copy, Clone)]
 #[repr(transparent)]
 pub struct Page {
-    pub addr: *mut usize,  // ptr to first byte of page.
+    pub addr: *mut usize, // ptr to first byte of page.
 }
 
 impl Palloc for PagePool {
@@ -48,7 +47,7 @@ impl Palloc for PagePool {
         }
     }
 
-    fn pfree(&mut self, size: usize) -> Result<(), VmError> { 
+    fn pfree(&mut self, _size: usize) -> Result<(), VmError> {
         todo!()
     }
 }
@@ -69,13 +68,15 @@ impl Page {
     // Watchout, this zeroes new pages.
     // If you don't want to zero, use From<T>.
     fn new(addr: *mut usize) -> Self {
-        unsafe { addr.write_bytes(0, 512); }
+        unsafe {
+            addr.write_bytes(0, 512);
+        }
         Page { addr }
     }
 
     // 'size' is in bytes. write_bytes() takes count * size_of::<T>() in bytes.
     // Since usize is 8 bytes, we want to zero out the page. Aka zero 512 PTEs.
-    fn zero(&mut self, size: usize) {
+    fn zero(&mut self) {
         unsafe {
             self.addr.write_bytes(0, 512);
         }
@@ -133,15 +134,19 @@ impl Pool {
             tmp.write_free(FreeNode::new(prev_pa, next_pa));
             pa = pa.map_addr(|addr| addr + chunk_size); // Don't use next_pa. End of loop will fail.
         }
-        
-        Pool { free: Some(free), bottom, top }
+
+        Pool {
+            free: Some(free),
+            bottom,
+            top,
+        }
     }
 
     fn alloc_page(&mut self, mut page: Page) -> Result<Page, VmError> {
         let free_node = page.read_free();
         let prev = free_node.prev;
         let next = free_node.next;
-        
+
         if next.addr() == 0x0 {
             self.free = None;
         } else {
@@ -154,7 +159,7 @@ impl Pool {
             Page::from(prev).write_next(next);
         }
 
-        page.zero(PAGE_SIZE);
+        page.zero();
         Ok(page)
     }
 }
@@ -163,7 +168,7 @@ impl PagePool {
     pub fn new(bottom: *mut usize, top: *mut usize) -> Self {
         assert!(is_multiple(bottom.addr(), PAGE_SIZE));
         assert!(is_multiple(top.addr(), PAGE_SIZE));
-        
+
         // LEFT AS COMMENT FOR FUTURE REFERENCE:
         //let total_size = top.addr() - bottom.addr();
         //let local_size = total_size / (2 * NHART);

@@ -1,17 +1,15 @@
 pub mod palloc;
 pub mod ptable;
 
+use crate::hw::param::*;
 use palloc::*;
 use ptable::{kpage_init, PageTable};
-use crate::hw::param::*;
 
 static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
-pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut(); 
-
+pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut();
 
 type VirtAddress = usize;
 type PhysAddress = *mut usize;
-
 
 #[derive(Debug)]
 pub enum VmError {
@@ -34,7 +32,11 @@ pub fn init() {
 
     // Map text, data, heap into kernel memory
     match kpage_init() {
-        Ok(mut pt) => unsafe { KPGTABLE = &mut pt; },
-        Err(_) => { panic!(); }
+        Ok(mut pt) => unsafe {
+            KPGTABLE = &mut pt;
+        },
+        Err(_) => {
+            panic!();
+        }
     }
 }

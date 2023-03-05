@@ -1,9 +1,9 @@
 // VA: 39bits, PA: 56bits
 // PTE size = 8 bytes
-use core::assert;
-use crate::vm::*;
 use crate::hw::param::*;
 use crate::hw::riscv::*;
+use crate::vm::*;
+use core::assert;
 
 const VA_TOP: usize = 1 << (27 + 12); // 2^27 VPN + 12 Offset
 const PTE_TOP: usize = 512; // 4Kb / 8 byte PTEs = 512 PTEs / page!
@@ -30,47 +30,47 @@ pub struct PageTable {
 macro_rules! vpn {
     ($p:expr, $l:expr) => {
         (($p).addr()) >> (12 + 9 * $l) & 0x1FF
-    }
+    };
 }
 
 macro_rules! PteToPhy {
     ($p:expr) => {
         ((($p) >> 10) << 12) as *mut usize
-    }
+    };
 }
 
 macro_rules! PhyToPte {
     ($p:expr) => {
         (((($p).addr()) >> 12) << 10)
-    }
+    };
 }
 
 macro_rules! PteGetFlag {
     ($pte:expr, $flag:expr) => {
         ($pte) & $flag != 0
-    }
+    };
 }
 
 macro_rules! PteSetFlag {
     ($pte:expr, $flag:expr) => {
-            (($pte) | $flag)
-    }
+        (($pte) | $flag)
+    };
 }
 
 macro_rules! PhyToSATP {
     ($pte:expr) => {
         (1 << 63) | ((($pte).addr()) >> 12)
-    }
+    };
 }
 
 macro_rules! PageAlignDown {
     ($p:expr) => {
         ($p).map_addr(|addr| addr & !(PAGE_SIZE - 1))
-    }
+    };
 }
 
 // Read the memory at location self + index * 8 bytes
-unsafe fn get_phy_offset(phy: PhysAddress, index: usize) ->  *mut PTEntry {
+unsafe fn get_phy_offset(phy: PhysAddress, index: usize) -> *mut PTEntry {
     phy.byte_add(index * 8)
 }
 
@@ -81,23 +81,21 @@ fn set_pte(pte: *mut PTEntry, contents: PTEntry) {
 }
 
 fn read_pte(pte: *mut PTEntry) -> PTEntry {
-    unsafe {
-        pte.read_volatile()
-    }
+    unsafe { pte.read_volatile() }
 }
 
 impl From<PTEntry> for PageTable {
     fn from(pte: PTEntry) -> Self {
-        PageTable { base: PteToPhy!(pte) }
+        PageTable {
+            base: PteToPhy!(pte),
+        }
     }
 }
 
 impl PageTable {
     fn index_mut(&self, idx: usize) -> *mut PTEntry {
         assert!(idx < PTE_TOP);
-        unsafe {
-            get_phy_offset(self.base, idx)
-        }
+        unsafe { get_phy_offset(self.base, idx) }
     }
     pub fn write_satp(&self) {
         flush_tlb();
@@ -116,7 +114,7 @@ unsafe fn walk(pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut 
         let idx = vpn!(va, level);
         let next: *mut PTEntry = table.index_mut(idx);
         table = match PteGetFlag!(*next, PTE_VALID) {
-            true => { PageTable::from(*next) },
+            true => PageTable::from(*next),
             false => {
                 if alloc_new {
                     match (*PAGEPOOL).palloc() {
@@ -124,7 +122,7 @@ unsafe fn walk(pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut 
                             *next = PteSetFlag!(PhyToPte!(pg.addr), PTE_VALID);
                             PageTable::from(PhyToPte!(pg.addr))
                         }
-                        Err(e) => { return Err(e) }
+                        Err(e) => return Err(e),
                     }
                 } else {
                     return Err(VmError::PallocFail);
@@ -140,24 +138,29 @@ unsafe fn walk(pt: &PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut 
 
 /// Maps some number of pages into the VM given by pt of byte length
 /// size.
-fn page_map(pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, flag: usize) -> Result<(), VmError> {
+fn page_map(
+    pt: &mut PageTable,
+    va: VirtAddress,
+    pa: PhysAddress,
+    size: usize,
+    flag: usize,
+) -> Result<(), VmError> {
     // Round down to page aligned boundary (multiple of pg size).
     let mut start = PageAlignDown!(va);
     let mut phys = pa;
-    let end = PageAlignDown!(va.map_addr(|addr| addr + (size-1)));
+    let end = PageAlignDown!(va.map_addr(|addr| addr + (size - 1)));
 
     while start <= end {
         let walk_addr = unsafe { walk(pt, start, true) };
         match walk_addr {
             Err(e) => {
                 return Err(e);
-            },
+            }
             Ok(pte_addr) => {
                 if read_pte(pte_addr) & PTE_VALID != 0 {
                     return Err(VmError::PallocFail);
                 }
-                set_pte(pte_addr, PteSetFlag!(PhyToPte!(phys),
-                                              flag | PTE_VALID));
+                set_pte(pte_addr, PteSetFlag!(PhyToPte!(phys), flag | PTE_VALID));
                 start = start.map_addr(|addr| addr + PAGE_SIZE);
                 phys = phys.map_addr(|addr| addr + PAGE_SIZE);
             }
@@ -169,16 +172,23 @@ fn page_map(pt: &mut PageTable, va: VirtAddress, pa: PhysAddress, size: usize, f
 
 // Initialize kernel page table
 pub fn kpage_init() -> Result<PageTable, VmError> {
-    let base = unsafe { (*PAGEPOOL).palloc().expect("Couldn't allocate root kernel page table.") };
+    let base = unsafe {
+        (*PAGEPOOL)
+            .palloc()
+            .expect("Couldn't allocate root kernel page table.")
+    };
     //log!(Debug, "Kernel page table base addr: {:#02x}", base.addr.addr());
-    let mut kpage_table = PageTable { base: base.addr as *mut usize };
+    let mut kpage_table = PageTable {
+        base: base.addr as *mut usize,
+    };
 
     if let Err(uart_map) = page_map(
         &mut kpage_table,
         UART_BASE as *mut usize,
         UART_BASE as *mut usize,
         PAGE_SIZE,
-        PTE_READ | PTE_WRITE) {
+        PTE_READ | PTE_WRITE,
+    ) {
         return Err(uart_map);
     }
     log!(Debug, "Successfully mapped UART into kernel pgtable...");
@@ -188,30 +198,42 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         DRAM_BASE,
         DRAM_BASE as *mut usize,
         text_end().addr() - DRAM_BASE.addr(),
-        PTE_READ | PTE_EXEC) {
-        return Err(kernel_text)
+        PTE_READ | PTE_EXEC,
+    ) {
+        return Err(kernel_text);
     }
-    log!(Debug, "Succesfully mapped kernel text into kernel pgtable...");
+    log!(
+        Debug,
+        "Succesfully mapped kernel text into kernel pgtable..."
+    );
 
     if let Err(kernel_rodata) = page_map(
         &mut kpage_table,
         text_end(),
         text_end() as *mut usize,
         rodata_end().addr() - text_end().addr(),
-        PTE_READ) {
-        return Err(kernel_rodata)
+        PTE_READ,
+    ) {
+        return Err(kernel_rodata);
     }
-    log!(Debug, "Succesfully mapped kernel rodata into kernel pgtable...");
+    log!(
+        Debug,
+        "Succesfully mapped kernel rodata into kernel pgtable..."
+    );
 
     if let Err(kernel_data) = page_map(
         &mut kpage_table,
         rodata_end(),
         rodata_end() as *mut usize,
         data_end().addr() - rodata_end().addr(),
-        PTE_READ | PTE_WRITE) {
-        return Err(kernel_data)
+        PTE_READ | PTE_WRITE,
+    ) {
+        return Err(kernel_data);
     }
-    log!(Debug, "Succesfully mapped kernel data into kernel pgtable...");
+    log!(
+        Debug,
+        "Succesfully mapped kernel data into kernel pgtable..."
+    );
 
     let base = stacks_start();
     for s in 0..NHART {
@@ -221,10 +243,15 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
             stack,
             stack as *mut usize,
             PAGE_SIZE,
-            PTE_READ | PTE_WRITE) {
-            return Err(kernel_stack)
+            PTE_READ | PTE_WRITE,
+        ) {
+            return Err(kernel_stack);
         }
-        log!(Debug, "Succesfully mapped kernel stack {} into kernel pgtable...", s);
+        log!(
+            Debug,
+            "Succesfully mapped kernel stack {} into kernel pgtable...",
+            s
+        );
     }
 
     if let Err(bss_map) = page_map(
@@ -232,8 +259,9 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         bss_start(),
         bss_start(),
         bss_end().addr() - bss_start().addr(),
-        PTE_READ | PTE_WRITE) {
-        return Err(bss_map)
+        PTE_READ | PTE_WRITE,
+    ) {
+        return Err(bss_map);
     }
     log!(Debug, "Succesfully mapped kernel bss...");
 
@@ -242,8 +270,9 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         bss_end(),
         bss_end(),
         dram_end().addr() - bss_end().addr(),
-        PTE_READ | PTE_WRITE) {
-        return Err(heap_map)
+        PTE_READ | PTE_WRITE,
+    ) {
+        return Err(heap_map);
     }
     log!(Debug, "Succesfully mapped kernel heap...");
 
