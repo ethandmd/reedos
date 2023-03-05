@@ -4,3 +4,4 @@ target extended-remote localhost:1234
 add-inferior
 info threads
 set schedule-multiple on
+set output-radix 16

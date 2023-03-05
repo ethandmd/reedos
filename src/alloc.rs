@@ -12,7 +12,7 @@
 /// the compiler
 use core::alloc::*;
 use core::cell::UnsafeCell;
-use core::mem::size_of;
+use core::mem::{size_of, align_of_val};
 
 use core::cmp::max;
 use core::ptr::null_mut;
@@ -27,11 +27,13 @@ fn out_of_bounds(addr: usize, heap_start: usize, heap_end: usize) -> bool {
 ///
 /// This is directly before the chunk allocated for user memory that
 /// it corresponds to.
+#[derive(Debug)]
+#[repr(C)]
 pub struct KChunkHeader {
     size: usize,             // Size of the chunk including this header
+    alignment_offset: usize, // Number of bytes between end of header and beginning of user data
     layout: Layout,          // What alloc/realloc call was this a response to?
     is_free: bool,           // Is this chunk in use or not?
-    alignment_offset: usize, // Number of bytes between end of header and beginning of user data
 }
 
 impl KChunkHeader {
@@ -84,9 +86,9 @@ impl KChunkHeader {
         self.size = user_size + size_of::<Self>() + self.alignment_offset();
     }
 
-    /// Update the usable size of this chunk by resizing.
-    fn set_padded_size(&mut self, padded_size: usize) {
-        self.size = padded_size + size_of::<Self>();
+    /// Update size of this chunk.
+    fn set_size(&mut self, size: usize) {
+        self.size = size;
     }
 
     /// Set the fingerprint of the call that put this into use.
@@ -120,7 +122,7 @@ impl KChunkHeader {
         heap_start: usize,
         heap_end: usize,
     ) -> Option<*mut KChunkHeader> {
-        let next = (self as *mut KChunkHeader).byte_offset(self.size() as isize);
+        let next = (self as *mut KChunkHeader).byte_add(self.size());
         if out_of_bounds(next as usize, heap_start, heap_end) {
             None
         } else {
@@ -187,6 +189,10 @@ unsafe impl Sync for Kalloc {}
 impl Kalloc {
     /// Make a new managed region given by the bounds. They are inclusive and exclusive respectively.
     pub fn new(start: usize, end: usize) -> Self {
+        let first_chunk = start as *mut KChunkHeader;
+        unsafe {
+            (*first_chunk).init_free(end - start);
+        }
         Kalloc {
             heap_start: start,
             heap_end: end,
@@ -207,8 +213,7 @@ impl Kalloc {
 
     // TODO this and next can be replaced with stuff from core::pointer I think
 
-    /// Make a size request conform to its matching alignment.
-    pub fn adjust_size_with_align(size: usize, align: &usize) -> usize {
+    pub fn adjust_size_with_align(size: usize, align: usize) -> usize {
         let mask: usize = align - 1;
         if (size & mask) != 0 {
             // has low order bits
@@ -220,14 +225,26 @@ impl Kalloc {
     }
 
     /// Adjust a pointer forward until it matches alignment at least.
-    pub fn adjust_ptr_with_align(ptr: *mut u8, align: &usize) -> (*mut u8, usize) {
+    ///
+    /// Returns a tuple of the changed pointer and the number of bytes
+    /// forward that it was moved
+    pub fn adjust_ptr_with_align(ptr: usize, align: usize) -> (usize , usize) {
         let mask: usize = align - 1;
         let addr: usize = ptr as usize;
         if (addr & mask) != 0 {
             // low order bits
-            (((addr & !mask) + align) as *mut u8, align - (addr & mask))
+            ((addr & !mask) + align, align - (addr & mask))
         } else {
             (ptr, 0)
+        }
+    }
+
+    pub fn print_alloc(&self) {
+        for cptr in self.mut_iter() {
+            unsafe {
+                let chunk: &KChunkHeader = &*cptr;
+                print!("{:?}", *chunk);
+            }
         }
     }
 }
@@ -236,35 +253,41 @@ impl Kalloc {
 unsafe impl GlobalAlloc for Kalloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let internal_align = max(layout.align(), size_of::<KChunkHeader>());
-        let internal_size = Kalloc::adjust_size_with_align(layout.size(), &internal_align);
+        let next_header_align = align_of_val(self);
 
         for cptr in self.mut_iter() {
             let chunk: &mut KChunkHeader = &mut *cptr;
+            let first_usable_byte = chunk.start_of_padding() as usize;
+            let aligned_ptr = Kalloc::adjust_ptr_with_align(
+                first_usable_byte, internal_align).0 as usize;
+            let aligned_ptr_size = aligned_ptr + layout.size();
+            let required_size = aligned_ptr_size - first_usable_byte as usize;
+            // ^ is how big the current chunk needs to be to accomidate the current request
             let padded_size = chunk.size_with_padding();
-            if padded_size >= internal_size && chunk.is_free() {
+            // ^ What is the maximum it can fit now?
+            if padded_size >= required_size && chunk.is_free() {
                 // this will work
-                if padded_size >= 2 * internal_size {
-                    // too big, we should only take what we need
-                    let new_chunk: *mut KChunkHeader = cptr.byte_offset(internal_size as isize);
-                    (*new_chunk).init_free(padded_size - internal_size);
-                    // does not set layout of new chunk
 
-                    (*chunk).set_padded_size(internal_size);
-                    (*chunk).set_is_free(false);
-                    (*chunk).set_layout(layout);
-                    let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), &internal_align);
-                    chunk.set_alignment_offset(ptr_and_offset.1);
-                    return ptr_and_offset.0;
-                } else {
-                    // this is close enough, just grab it
-                    chunk.set_is_free(false);
-                    chunk.set_layout(layout);
-                    let ptr_and_offset =
-                        Kalloc::adjust_ptr_with_align(chunk.user_data(), &internal_align);
-                    chunk.set_alignment_offset(ptr_and_offset.1);
-                    return ptr_and_offset.0;
-                }
+                // min number bytes to the next header from the bottom of this header
+                let skip: usize = required_size;
+
+                let next_header = Self::adjust_ptr_with_align(
+                    first_usable_byte + skip,
+                    next_header_align).0;
+
+
+                let new_chunk: *mut KChunkHeader = next_header as *mut KChunkHeader;
+                (*new_chunk).init_free(padded_size - skip);
+                // does not set layout of new chunk
+
+                (*chunk).set_size(skip + size_of::<KChunkHeader>());
+                (*chunk).set_is_free(false);
+                (*chunk).set_layout(layout);
+                let ptr_and_offset =
+                    Kalloc::adjust_ptr_with_align(first_usable_byte, internal_align);
+                chunk.set_alignment_offset(ptr_and_offset.1);
+                return ptr_and_offset.0 as *mut u8;
+
             }
         }
         return null_mut::<u8>(); // Can't find any space
@@ -297,71 +320,72 @@ unsafe impl GlobalAlloc for Kalloc {
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        let previous: Option<*mut KChunkHeader> = None;
-        let internal_align = max(layout.align(), size_of::<KChunkHeader>());
-        let internal_size = Kalloc::adjust_size_with_align(new_size, &internal_align);
+        return null_mut::<u8>();
+        // let previous: Option<*mut KChunkHeader> = None;
+        // let internal_align = max(layout.align(), size_of::<KChunkHeader>());
+        // let internal_size = Kalloc::adjust_size_with_align(new_size, internal_align);
 
-        for cptr in self.mut_iter() {
-            let chunk = &mut *cptr;
-            if chunk.matches_layout(&layout) && (*chunk).user_data() == ptr {
-                // this is it
-                chunk.set_is_free(true);
-                chunk.attempt_merge(self.heap_start, self.heap_end);
-                if previous != None && (*previous.unwrap()).is_free() {
-                    let p_chunk = &mut *previous.unwrap();
-                    p_chunk.attempt_merge(self.heap_start, self.heap_end);
-                    if p_chunk.size_with_padding() > internal_size {
-                        // we can use prev: copy and be wary of
-                        // overlap. we are writing forward from source
-                        // to dest, and dest comes before source, so
-                        // we should be fine
-                        p_chunk.set_is_free(false);
-                        p_chunk
-                            .set_layout(Layout::from_size_align(new_size, layout.align()).unwrap());
+        // for cptr in self.mut_iter() {
+        //     let chunk = &mut *cptr;
+        //     if chunk.matches_layout(&layout) && (*chunk).user_data() == ptr {
+        //         // this is it
+        //         chunk.set_is_free(true);
+        //         chunk.attempt_merge(self.heap_start, self.heap_end);
+        //         if previous != None && (*previous.unwrap()).is_free() {
+        //             let p_chunk = &mut *previous.unwrap();
+        //             p_chunk.attempt_merge(self.heap_start, self.heap_end);
+        //             if p_chunk.size_with_padding() > internal_size {
+        //                 // we can use prev: copy and be wary of
+        //                 // overlap. we are writing forward from source
+        //                 // to dest, and dest comes before source, so
+        //                 // we should be fine
+        //                 p_chunk.set_is_free(false);
+        //                 p_chunk
+        //                     .set_layout(Layout::from_size_align(new_size, layout.align()).unwrap());
 
-                        let ptr_and_offset = Kalloc::adjust_ptr_with_align(
-                            p_chunk.start_of_padding(),
-                            &internal_align,
-                        );
-                        p_chunk.set_alignment_offset(ptr_and_offset.1);
+        //                 let ptr_and_offset = Kalloc::adjust_ptr_with_align(
+        //                     p_chunk.start_of_padding(),
+        //                     internal_align,
+        //                 );
+        //                 p_chunk.set_alignment_offset(ptr_and_offset.1);
 
-                        let dest = p_chunk.user_data();
-                        let src = chunk.user_data();
-                        for off in 0..chunk.user_size() {
-                            dest.byte_offset(off as isize)
-                                .write(src.byte_offset(off as isize).read());
-                        }
-                        return ptr_and_offset.0;
-                    }
-                } else if chunk.size_with_padding() > internal_size {
-                    // prev wasn't free or didn't exist. But this
-                    // chunk that has been freed and merged is big
-                    // enough. We can avoid any data movement
-                    chunk.set_is_free(false);
-                    chunk.set_layout(Layout::from_size_align(new_size, layout.align()).unwrap());
-                    return chunk.user_data();
-                } else {
-                    // neither prev nor the chunk we freed worked, just straight alloc
+        //                 let dest = p_chunk.user_data();
+        //                 let src = chunk.user_data();
+        //                 for off in 0..chunk.user_size() {
+        //                     dest.byte_offset(off as isize)
+        //                         .write(src.byte_offset(off as isize).read());
+        //                 }
+        //                 return ptr_and_offset.0;
+        //             }
+        //         } else if chunk.size_with_padding() > internal_size {
+        //             // prev wasn't free or didn't exist. But this
+        //             // chunk that has been freed and merged is big
+        //             // enough. We can avoid any data movement
+        //             chunk.set_is_free(false);
+        //             chunk.set_layout(Layout::from_size_align(new_size, layout.align()).unwrap());
+        //             return chunk.user_data();
+        //         } else {
+        //             // neither prev nor the chunk we freed worked, just straight alloc
 
-                    // TODO this re-traverses part of the array. fix it.
+        //             // TODO this re-traverses part of the array. fix it.
 
-                    chunk.set_is_free(false); // avoid clobbering side effects of future alloc optimizations
+        //             chunk.set_is_free(false); // avoid clobbering side effects of future alloc optimizations
 
-                    let dest =
-                        self.alloc(Layout::from_size_align(new_size, layout.align()).unwrap());
-                    if dest == null_mut::<u8>() {
-                        panic!("Realloc Failure: Couldn't allocate a new chunk.");
-                    }
-                    let src = chunk.user_data();
-                    for off in 0..chunk.user_size() {
-                        dest.byte_offset(off as isize)
-                            .write(src.byte_offset(off as isize).read());
-                    }
-                    chunk.set_is_free(true);
-                    return dest;
-                }
-            }
-        }
-        panic!("Realloc Failure: Chunk not found. Have you changed your pointer or layout?")
+        //             let dest =
+        //                 self.alloc(Layout::from_size_align(new_size, layout.align()).unwrap());
+        //             if dest == null_mut::<u8>() {
+        //                 panic!("Realloc Failure: Couldn't allocate a new chunk.");
+        //             }
+        //             let src = chunk.user_data();
+        //             for off in 0..chunk.user_size() {
+        //                 dest.byte_offset(off as isize)
+        //                     .write(src.byte_offset(off as isize).read());
+        //             }
+        //             chunk.set_is_free(true);
+        //             return dest;
+        //         }
+        //     }
+        // }
+        // panic!("Realloc Failure: Chunk not found. Have you changed your pointer or layout?")
     }
 }

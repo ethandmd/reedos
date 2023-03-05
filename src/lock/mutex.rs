@@ -39,7 +39,7 @@ impl<T> core::ops::Drop for MutexGuard<'_, T> {
 // 2. If unable, spin.
 pub struct Mutex<T> {
     lock_state: AtomicU32, // (0,1) = (unlocked, locked)
-    inner: UnsafeCell<T>, 
+    inner: UnsafeCell<T>,
 }
 
 unsafe impl<T: Send> Sync for Mutex<T> {}
@@ -63,8 +63,4 @@ impl<T> Mutex<T> {
         while self.lock_state.swap(1, Ordering::Acquire) == 1 {}
         MutexGuard { mutex: self }
     }
-
-    
 }
-
-

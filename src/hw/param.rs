@@ -2,7 +2,7 @@
 // Qemu riscv virt machine memory locations you want to know:
 // https://github.com/qemu/qemu/blob/master/hw/riscv/virt.c
 //
-//static const MemMapEntry virt_memmap[] = {
+//static static MemMapEntry virt_memmap[] = {
 //    [VIRT_DEBUG] =        {        0x0,         0x100 },
 //    [VIRT_MROM] =         {     0x1000,        0xf000 },
 //    [VIRT_TEST] =         {   0x100000,        0x1000 },
@@ -25,18 +25,71 @@
 //    [VIRT_DRAM] =         { 0x80000000,           0x0 },
 //}
 
+use core::ptr::addr_of_mut;
+
+// NOTE:
+// We can't just use link_name for linker symbols, cause they don't
+// bind correctly for some reason.
+// Instead, use core::ptr::addr_of!() to get address and then cast to usize.
+//
+// TODO consider reworking this to have a consistent naming scheme and
+// maybe a macro for the getter functions.
+extern "C" {
+    static mut __text_end: usize;
+    static mut __bss_start: usize;
+    static mut __bss_end: usize;
+    static mut __memory_end: usize;
+    static mut _roedata: usize;
+    static mut _edata: usize;
+    static mut __stacks_start: usize;
+    static mut __stacks_end: usize;
+}
+
 // Memlayout params
-pub const UART_BASE: usize = 0x10000000;
 pub const CLINT_BASE: usize = 0x2000000;
-pub const PAGE_SIZE: usize = 4096;
+pub const UART_BASE: usize = 0x10000000;
+pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
+
+pub fn text_end() -> *mut usize {
+    unsafe { addr_of_mut!(__text_end) }
+}
+
+pub fn bss_end() -> *mut usize {
+    unsafe { addr_of_mut!(__bss_end) }
+}
+
+pub fn bss_start() -> *mut usize {
+    unsafe { addr_of_mut!(__bss_start) }
+}
+
+pub fn rodata_end() -> *mut usize {
+    unsafe { addr_of_mut!(_roedata) }
+}
+
+pub fn data_end() -> *mut usize {
+    unsafe { addr_of_mut!(_edata) }
+}
+
+pub fn stacks_start() -> *mut usize {
+    unsafe { addr_of_mut!(__stacks_start) }
+}
+
+pub fn stacks_end() -> *mut usize {
+    unsafe { addr_of_mut!(__stacks_end) }
+}
+
+pub fn dram_end() -> *mut usize {
+    unsafe { addr_of_mut!(__memory_end) }
+}
+
+pub static PAGE_SIZE: usize = 4096;
 
 // Run parameters
 pub const NHART: usize = 2;
 
-
 // Unnecessary.
-pub const BANNER: &'static str = r#"
-Mellow Swirled to
+pub static BANNER: &'static str = r#"
+Mellow Swirled,
                        __
    ________  ___  ____/ /___  _____
   / ___/ _ \/ _ \/ __  / __ \/ ___/

@@ -1,46 +1,42 @@
-use crate::lock::mutex::Mutex;
-use crate::alloc::Kalloc;
-use crate::param::NHART;
+pub mod palloc;
+pub mod ptable;
 
-use core::array::from_fn;
+use crate::hw::param::*;
+use palloc::*;
+use ptable::{kpage_init, PageTable};
 
-pub struct Kpools {
-    global: [Mutex<Kalloc>; NHART+1], 
+static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
+pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut();
+
+type VirtAddress = usize;
+type PhysAddress = *mut usize;
+
+#[derive(Debug)]
+pub enum VmError {
+    OutOfPages,
+    PartialPalloc,
+    PallocFail,
+    PfreeFail,
 }
 
-impl Kpools {
-    // Set up locked local pools per hart
-    // + locked global pool.
-    pub fn new(start: usize, end: usize) -> Self{
-        //let mut global: [Mutex<Kalloc>; NHART+1] = from_fn(|id| Mutex::new(Kalloc::new()));
-        let local_size = (end-start) / 2*NHART;
-        // Round down to power of 2
-        let local_size = local_size >> 1;
-        let local_size = local_size << 1;
- 
-        let global: [Mutex<Kalloc>; NHART+1] = from_fn(|id| {
-            let local_start = start + local_size * id;
-            let global_start = start + (local_size * (NHART + 1));
-            if id <= NHART {
-                return Mutex::new(Kalloc::new(local_start, local_start + local_size));
-            } else {
-                return Mutex::new(Kalloc::new(global_start, end));
-            }});
+trait Palloc {
+    fn palloc(&mut self) -> Result<Page, VmError>;
+    fn pfree(&mut self, size: usize) -> Result<(), VmError>;
+}
 
-        Kpools { global }
+pub fn init() {
+    unsafe {
+        PAGEPOOL = &mut PagePool::new(bss_end(), dram_end());
+    }
+    log!(Debug, "Successfully initialized kernel page pool...");
+
+    // Map text, data, heap into kernel memory
+    match kpage_init() {
+        Ok(mut pt) => unsafe {
+            KPGTABLE = &mut pt;
+        },
+        Err(_) => {
+            panic!();
+        }
     }
 }
-
-// Address Space is :
-// struct AS {
-//     data: impl DataSource,
-// }
-
-// VA: 39bits, PA: 56bits
-// struct Pte { pte: u64 }
-// impl .v, .r, .x
-
-// walk pagetable
-// map PTE
-// unmap PTE
-// flush
