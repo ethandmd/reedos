@@ -1,8 +1,7 @@
 /// General allocation, basically malloc/kalloc type thing
-use crate::vm::palloc;
 use crate::hw::param::*;
-use core::mem::size_of;
 use core::assert;
+use crate::vm::palloc::PagePool;
 
 /// This is either a data layer or an indirect layer
 ///
@@ -23,45 +22,45 @@ use core::assert;
 /// If this is a data layer, then the entire page is naturally aligned
 /// data. By that I mean that a pow of 2 chunk of size n is n-byte
 /// aligned.
-type header = [u64; PAGE_SIZE/64];
+type Header = [u64; param::PAGE_SIZE/64];
 
 pub struct GAlloc {
-    root: *mut header,
+    root: *mut Header,
 }
 
 // gives the index of the lowest set bit or None
-fn lowest_set_bit(field: u64) -> Option<usize> {
-    let mut i = 0;
-    while (i < 64 &&
-           !((field >> i) & 0x1)) {
-        i += 1;
-    }
-    match i {
-        64 => {
-            None
-        },
-        _ => {
-            i
-        }
-    }
-}
+// fn lowest_set_bit(field: u64) -> Option<usize> {
+//     let mut i = 0;
+//     while (i < 64 &&
+//            !((field >> i) & 0x1)) {
+//         i += 1;
+//     }
+//     match i {
+//         64 => {
+//             None
+//         },
+//         _ => {
+//             i
+//         }
+//     }
+// }
 
 //same but for highest
-fn highest_set_bit(field: u64) -> Option<usize> {
-    let mut i = 63;
-    while (i >= 0 &&
-           !((field >> i) & 0x1)) {
-        i -= 1;
-    }
-    match i {
-        0 => {
-            None
-        },
-        _ => {
-            i
-        }
-    }
-}
+// fn highest_set_bit(field: u64) -> Option<usize> {
+//     let mut i = 63;
+//     while (i >= 0 &&
+//            !((field >> i) & 0x1)) {
+//         i -= 1;
+//     }
+//     match i {
+//         0 => {
+//             None
+//         },
+//         _ => {
+//             i
+//         }
+//     }
+// }
 
 // not efficient. make a lower bit mask with said # of ones
 fn make_mask(mut num_ones: usize) -> u64 {
@@ -84,15 +83,41 @@ fn round_up(mut s:u64) -> u64 {
     s + 1
 }
 
+fn get_page() -> *mut u8 {
+    unsafe { (*crate::vm::PAGEPOOL).palloc() }
+}
+
 impl GAlloc {
-    pub fn new() -> Self {
-        let page = palloc() as *mut header;
+    pub fn new(page_allocator: PagePool) -> Self {
+        let page =  as *mut Header;
         page.0 = 1;
         page.1 = 0;
         // level 1 page with no valid pages
         GAlloc {
             root: page
         }
+    }
+
+    // readability helpers
+    fn set_level(mut self, level: u64) {
+        self.root.0 = level;
+    }
+
+    fn set_valid_bits(mut self, bit_mask: u64) {
+        self.root.1 |= bit_mask;
+    }
+
+    // clears the bits specified as arg
+    fn clear_valid_bits(mut self, bit_mask: u64) {
+        self.root.1 &= !bit_mask;
+    }
+
+    fn level(self) -> u64 {
+        self.root.0
+    }
+
+    fn valid(self) -> u64 {
+        self.root.1
     }
 
     //TODO drop? What does that even mean here
@@ -113,8 +138,8 @@ impl GAlloc {
         None
     }
 
-    fn walk_alloc(size: usize, root: *mut header) -> Option<*mut usize> {
-        if root[0] != 1 {
+    fn walk_alloc(size: usize, root: *mut Header) -> Option<*mut usize> {
+        if root.level() != 1 {
             for i in (2..64).step_by(2) {
                 match walk_alloc(size, *(root.i)) {
                     None => {},
@@ -125,7 +150,7 @@ impl GAlloc {
         } else {
             let open: isize = -1; // neg if full, 0-63 for first empty
             for i in (2..64).step_by(2) {
-                if (root[1] >> i) & 0x1 == 0 {
+                if (root.valid() >> i) & 0x1 == 0 {
                     if open == -1 { open = i; }
                     continue;
                 }
@@ -142,7 +167,7 @@ impl GAlloc {
             }
             // couldn't find anything, try to add another indirect layer
             if open >= 0 {
-                let mut page = palloc() as *mut header;
+                let mut page = palloc() as *mut Header;
                 root[open] = page;
                 page[0] = root[0] - 1;
                 page[1] = 0;    // entirely empty;
@@ -159,7 +184,7 @@ impl GAlloc {
         match walk_alloc(size, self.root) {
             Some(ret) => { Some(ret) },
             None => {
-                let new_root = palloc() as *mut header;
+                let new_root = palloc() as *mut Header;
                 new_root[0] = self.root[0] + 1;
                 new_root[1] = 0x4; // single valid entry, old root
                 new_root[2] = self.root;
@@ -169,9 +194,9 @@ impl GAlloc {
         }
     }
 
-    fn walk_dealloc(ptr: *mut usize, size: usize, root: *mut header) {
+    fn walk_dealloc(ptr: *mut usize, size: usize, root: *mut Header) {
         let test_ptr = ptr as usize & !(PAGE_SIZE - 1);
-        if header[0] != 1 {
+        if Header[0] != 1 {
             for i in (2..64).step_by(2) {
                 if root[1] >> i == 0 {continue;}
                 walk_dealloc(ptr, size, root[i]);
