@@ -27,7 +27,8 @@ trait Palloc {
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
 
-trait Resource {}
+//trait Resource {}
+struct Resource;
 
 /// Initialize the kernel VM system.
 /// First, setup the kernel physical page pool.

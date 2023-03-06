@@ -6,7 +6,7 @@ use crate::collection::BalBst;
 
 pub struct Process {
     id: usize,
-    address_space: BalBst<dyn Resource>, // todo: Balanced BST of dyn Resource
+    address_space: BalBst<Resource>, // todo: Balanced BST of Resources
     state: ProcessState,
     pgtbl: PageTable,
     trapframe: TrapFrame,

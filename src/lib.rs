@@ -16,6 +16,8 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod vm;
+pub mod mem;
+pub mod collection;
 //pub mod alloc;
 
 use crate::device::uart;
