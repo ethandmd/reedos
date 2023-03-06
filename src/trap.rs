@@ -1,4 +1,5 @@
 //! Kernel trap handlers.
+use crate::vm::ptable::PageTable;
 use crate::device::clint;
 use crate::hw::riscv;
 
@@ -11,6 +12,14 @@ use crate::log;
 extern "C" {
     pub fn __mtrapvec();
     pub fn __strapvec();
+}
+
+pub struct TrapFrame {
+    kpgtbl: *mut PageTable,
+    handler: *const (),
+    cause: usize,
+    retpc: usize, // Return from trap program counter value.
+    regs: [usize; 32],
 }
 
 /// Write the supervisor trap vector to stvec register on each hart.
