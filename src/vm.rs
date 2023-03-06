@@ -1,6 +1,7 @@
 //! Virtual Memory
 pub mod palloc;
 pub mod ptable;
+pub mod process;
 
 use crate::hw::param::*;
 use palloc::*;
@@ -25,6 +26,8 @@ trait Palloc {
     fn palloc(&mut self) -> Result<Page, VmError>;
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
+
+trait Resource {}
 
 /// Initialize the kernel VM system.
 /// First, setup the kernel physical page pool.
