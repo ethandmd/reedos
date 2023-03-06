@@ -1,7 +1,7 @@
 //! Physical page allocator
 use crate::hw::param::*;
 use crate::lock::mutex::Mutex;
-use crate::vm::{Palloc, VmError};
+use crate::vm::VmError;
 
 /// Utility function, primarily used to check if addresses are page aligned.
 fn is_multiple(addr: usize, size: usize) -> bool {
@@ -34,10 +34,16 @@ pub struct Page {
     pub addr: *mut usize, // ptr to first byte of page.
 }
 
-impl Palloc for PagePool {
+impl FreeNode {
+    fn new(prev: *mut usize, next: *mut usize) -> Self {
+        FreeNode { prev, next }
+    }
+}
+
+impl PagePool {
     /// Allocate page of physical memory by returning a pointer
     /// to the allocated page.
-    fn palloc(&mut self) -> Result<Page, VmError> {
+    pub fn palloc(&mut self) -> Result<Page, VmError> {
         let mut pool = self.pool.lock();
         match pool.free {
             None => Err(VmError::OutOfPages),
@@ -46,14 +52,8 @@ impl Palloc for PagePool {
     }
 
     /// Not Implemented.
-    fn pfree(&mut self, _size: usize) -> Result<(), VmError> {
+    pub fn pfree(&mut self, _size: usize) -> Result<(), VmError> {
         todo!()
-    }
-}
-
-impl FreeNode {
-    fn new(prev: *mut usize, next: *mut usize) -> Self {
-        FreeNode { prev, next }
     }
 }
 

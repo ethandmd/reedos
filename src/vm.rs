@@ -23,12 +23,6 @@ pub enum VmError {
     PfreeFail,
 }
 
-/// Generic interface the phyiscal page allocator implements.
-trait Palloc {
-    fn palloc(&mut self) -> Result<Page, VmError>;
-    fn pfree(&mut self, size: usize) -> Result<(), VmError>;
-}
-
 pub trait Resource {}
 
 pub struct TaskList {
