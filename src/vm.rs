@@ -4,6 +4,7 @@ pub mod ptable;
 pub mod process;
 
 use crate::hw::param::*;
+use crate::mem::Kbox;
 use palloc::*;
 use ptable::{kpage_init, PageTable};
 use process::Process;
@@ -28,11 +29,16 @@ trait Palloc {
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
 }
 
-//pub trait Resource {}
-pub struct Resource;
+pub trait Resource {}
 
 pub struct TaskList {
-    head: Option<Process>, // TODO:Convert to Option<Kbox<Process>>>
+    head: Option<Kbox<Process>>, // TODO:Convert to Option<Kbox<Process>>>
+}
+
+pub struct TaskNode {
+    proc: Option<Kbox<Process>>,
+    prev: Option<Kbox<TaskNode>>,
+    next: Option<Kbox<TaskNode>>,
 }
 
 /// Initialize the kernel VM system.

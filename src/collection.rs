@@ -1,6 +1,6 @@
-use crate::mem::Kbox;
+use core::ptr::NonNull;
 
 pub struct BalBst<T> {
-    left: Option<Kbox<T>>,
-    right: Option<Kbox<T>>,
+    left: Option<NonNull<T>>,
+    right: Option<NonNull<T>>,
 }
