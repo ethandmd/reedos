@@ -1,10 +1,12 @@
 //! Virtual Memory
 pub mod palloc;
 pub mod ptable;
+pub mod process;
 
 use crate::hw::param::*;
 use palloc::*;
 use ptable::{kpage_init, PageTable};
+use process::Process;
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: *mut PagePool = core::ptr::null_mut(); // *mut dyn Palloc
@@ -24,6 +26,13 @@ pub enum VmError {
 trait Palloc {
     fn palloc(&mut self) -> Result<Page, VmError>;
     fn pfree(&mut self, size: usize) -> Result<(), VmError>;
+}
+
+//pub trait Resource {}
+pub struct Resource;
+
+pub struct TaskList {
+    head: Option<Process>, // TODO:Convert to Option<Kbox<Process>>>
 }
 
 /// Initialize the kernel VM system.

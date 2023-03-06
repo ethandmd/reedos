@@ -2,9 +2,22 @@
 pub mod param;
 pub mod riscv;
 
+use crate::vm::process::Process;
 use crate::device::clint;
 use crate::trap;
 use riscv::*;
+
+/// Callee saved registers.
+pub struct HartContext {
+    regs: [usize; 32],
+}
+
+/// Representation of riscv hart.
+pub struct Hart {
+    id: usize,
+    process: Process,
+    ctx_regs: HartContext,
+}
 
 /// Set up and enable the core local interrupt controller on each hart.
 /// We write the machine mode trap vector register (mtvec) with the address
