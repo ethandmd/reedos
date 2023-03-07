@@ -179,17 +179,19 @@ impl Pool {
         let addr = page.addr;
         page.zero();
 
-        if let None = self.free {
-            page.write_free(head_prev, head_next);
-            self.free = Some(page);
-            return;
-        } else {
-            (head_prev, head_next) = self.free.unwrap().read_free();
-        };
+        match self.free {
+            Some(page) => { head_next = page.addr; }
+            None => {
+                page.write_free(head_prev, head_next);
+                self.free = Some(page);
+                return;
+            }
+        }
 
-        while addr < head_next && head_next != 0x0 as *mut usize {
+        while addr > head_next && head_next != 0x0 as *mut usize {
             (head_prev, head_next) = Page::from(head_next).read_free();
         }
+        Page::from(head_next).write_prev(addr);
         page.write_free(head_prev, head_next);
     }
 }
