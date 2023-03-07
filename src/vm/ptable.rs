@@ -124,7 +124,10 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
             true => PageTable::from(*next),
             false => {
                 if alloc_new {
-                    match (*PAGEPOOL).palloc() {
+                    match PAGEPOOL
+                        .get_mut()
+                        .unwrap()
+                        .palloc() {
                         Ok(pg) => {
                             *next = PteSetFlag!(PhyToPte!(pg.addr), PTE_VALID);
                             PageTable::from(PhyToPte!(pg.addr))
@@ -186,7 +189,9 @@ fn page_map(
 /// the kernel 'heap'.
 pub fn kpage_init() -> Result<PageTable, VmError> {
     let base = unsafe {
-        (*PAGEPOOL)
+        PAGEPOOL
+            .get_mut()
+            .unwrap()
             .palloc()
             .expect("Couldn't allocate root kernel page table.")
     };
