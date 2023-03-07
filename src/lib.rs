@@ -6,6 +6,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
+#![feature(once_cell)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 
@@ -103,11 +104,13 @@ fn main() -> ! {
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
         log!(Info, "Finished trap init...");
-        vm::init();
+        let _ = vm::init();
         unsafe {
             (*vm::KPGTABLE).write_satp();
         }
         log!(Info, "Initialized the kernel page table...");
+        log!(Debug, "Testing page allocation and freeing...");
+        unsafe { vm::test_palloc() };
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
