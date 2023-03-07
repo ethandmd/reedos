@@ -51,40 +51,6 @@ pub struct GAlloc {
     root: *mut Header,
 }
 
-// gives the index of the lowest set bit or None
-// fn lowest_set_bit(field: u64) -> Option<usize> {
-//     let mut i = 0;
-//     while (i < 64 &&
-//            !((field >> i) & 0x1)) {
-//         i += 1;
-//     }
-//     match i {
-//         64 => {
-//             None
-//         },
-//         _ => {
-//             i
-//         }
-//     }
-// }
-
-//same but for highest
-// fn highest_set_bit(field: u64) -> Option<usize> {
-//     let mut i = 63;
-//     while (i >= 0 &&
-//            !((field >> i) & 0x1)) {
-//         i -= 1;
-//     }
-//     match i {
-//         0 => {
-//             None
-//         },
-//         _ => {
-//             i
-//         }
-//     }
-// }
-
 // not efficient. make a lower bit mask with said # of ones
 fn make_mask(mut num_ones: u64) -> u64 {
     let mut out = 0;
@@ -99,8 +65,7 @@ fn make_mask(mut num_ones: u64) -> u64 {
 /* stolen: https://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2 */
 fn round_up(mut s:u64) -> u64 {
     s -= 1;
-    let mut i = 1;
-    while i < 64 {
+    for i in 1..64 {
         s |= s >> i;
     }
     s + 1
@@ -248,7 +213,7 @@ impl GAlloc {
         }
     }
 
-    pub fn alloc(mut self, size: usize) -> Result<*mut usize, VmError> {
+    pub fn alloc(&mut self, size: usize) -> Result<*mut usize, VmError> {
         assert!(size <= PAGE_SIZE, "GAlloc is only sub-page size");
         match unsafe {Self::walk_alloc(size, &mut (*self.root)) } {
             Ok(ret) => { Ok(ret) },
