@@ -51,9 +51,11 @@ impl PagePool {
         }
     }
 
-    /// Not Implemented.
-    pub fn pfree(&mut self, _size: usize) -> Result<(), VmError> {
-        todo!()
+    /// Free a page of physical memory by inserting into the doubly
+    /// linked free list in order.
+    pub fn pfree(&mut self, page: Page) -> Result<(), VmError> {
+        let mut pool = self.pool.lock();
+        pool.free_page(page)
     }
 }
 
@@ -92,9 +94,9 @@ impl Page {
     // Takes a free page and writes the previous free page's addr in
     // the first 8 bytes. Then writes the next free page's addr in the
     // following 8 bytes.
-    fn write_free(&mut self, free_node: FreeNode) {
-        self.write_prev(free_node.prev);
-        self.write_next(free_node.next);
+    fn write_free(&mut self, prev: *mut usize, next: *mut usize) {
+        self.write_prev(prev);
+        self.write_next(next);
     }
 
     /// Write the next pointer of the doubly linked list to this page.
@@ -112,12 +114,10 @@ impl Page {
     }
 
     /// Read the prev, next pointers of a page in the free list.
-    fn read_free(&mut self) -> FreeNode {
+    fn read_free(&mut self) -> (*mut usize, *mut usize) {
         unsafe {
-            FreeNode::new(
-                self.addr.read_volatile() as *mut usize,
-                self.addr.add(1).read_volatile() as *mut usize,
-            )
+            (self.addr.read_volatile() as *mut usize,
+            self.addr.add(1).read_volatile() as *mut usize)
         }
     }
 }
@@ -129,8 +129,8 @@ impl Pool {
         // Set up head of the free list.
         let mut free = Page::new(bottom);
         let mut pa = bottom.map_addr(|addr| addr + chunk_size);
-        let tmp = FreeNode::new(0x0 as *mut usize, pa); // First free page 'prev' == 0x0 => none.
-        free.write_free(tmp);
+        //let tmp = FreeNode::new(0x0 as *mut usize, pa); // First free page 'prev' == 0x0 => none.
+        free.write_free(0x0 as *mut usize, pa);
         let last = top.map_addr(|addr| addr - chunk_size);
         // Init the remainder of the free list.
         while pa < top {
@@ -143,7 +143,7 @@ impl Pool {
             };
 
             let mut tmp = Page::new(pa);
-            tmp.write_free(FreeNode::new(prev_pa, next_pa));
+            tmp.write_free(prev_pa, next_pa);
             pa = pa.map_addr(|addr| addr + chunk_size); // Don't use next_pa. End of loop will fail.
         }
 
@@ -159,9 +159,7 @@ impl Pool {
     /// If this is the last free page in the pool, set the free pool to None
     /// in order to trigger the OutOfPages error.
     fn alloc_page(&mut self, mut page: Page) -> Result<Page, VmError> {
-        let free_node = page.read_free();
-        let prev = free_node.prev;
-        let next = free_node.next;
+        let (prev, next) = page.read_free();
 
         if next.addr() == 0x0 {
             self.free = None;
@@ -177,6 +175,31 @@ impl Pool {
 
         page.zero();
         Ok(page)
+    }
+
+    fn free_page(&mut self, mut page: Page) -> Result<(), VmError> {
+        let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
+        let addr = page.addr;
+        page.zero();
+        
+        if let None = self.free {
+            page.write_free(head_prev, head_next);
+            self.free = Some(page);
+        } else if addr < head_prev {
+            Page::from(head_prev).write_prev(addr);
+            page.write_free(0x0 as *mut usize, head_prev);
+        } else if addr < head_next {
+            Page::from(head_prev).write_next(addr);
+            Page::from(head_next).write_prev(addr);
+            page.write_free(head_prev, head_next);
+        }
+
+        (head_prev, head_next) = Page::from(head_next).read_free();
+        while addr < head_next && head_next != 0x0 as *mut usize {
+            (head_prev, head_next) = Page::from(head_next).read_free();
+        }
+        page.write_free(head_prev, head_next);
+        Ok(())
     }
 }
 
