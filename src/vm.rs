@@ -61,7 +61,8 @@ pub fn init() -> Result<(), PagePool>{
 
 pub unsafe fn test_palloc() {
     let allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
-    println!("allocd addr: {:?}", allocd.addr);
+    //println!("allocd addr: {:?}", allocd.addr);
     allocd.addr.write(0xdeadbeaf);
     let _ = PAGEPOOL.get_mut().unwrap().pfree(allocd);
+    log!(Debug, "Successful test of page allocation and freeing...");
 }
