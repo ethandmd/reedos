@@ -42,12 +42,12 @@ impl FreeNode {
 
 impl PagePool {
     /// Allocate page of physical memory by returning a pointer
-    /// to the allocated page.
+    /// to the allocated page from the doubly linked free list.
     pub fn palloc(&mut self) -> Result<Page, VmError> {
         let mut pool = self.pool.lock();
         match pool.free {
             None => Err(VmError::OutOfPages),
-            Some(page) => pool.alloc_page(page),
+            Some(page) => Ok(pool.alloc_page(page)),
         }
     }
 
@@ -55,7 +55,7 @@ impl PagePool {
     /// linked free list in order.
     pub fn pfree(&mut self, page: Page) -> Result<(), VmError> {
         let mut pool = self.pool.lock();
-        pool.free_page(page)
+        Ok(pool.free_page(page))
     }
 }
 
@@ -154,12 +154,13 @@ impl Pool {
         }
     }
 
-    /// Remove the current head of the doubly linked list and replace it
-    /// with the next free page in the list.
-    /// If this is the last free page in the pool, set the free pool to None
-    /// in order to trigger the OutOfPages error.
-    fn alloc_page(&mut self, mut page: Page) -> Result<Page, VmError> {
-        let (prev, next) = page.read_free();
+    // Remove the current head of the doubly linked list and replace it
+    // with the next free page in the list.
+    // If this is the last free page in the pool, set the free pool to None
+    // in order to trigger the OutOfPages error.
+    fn alloc_page(&mut self, mut page: Page) -> Page {
+        let (prev, next) = page.read_free(); // prev is always 0x0
+        assert_eq!(prev, 0x0 as *mut usize);
 
         if next.addr() == 0x0 {
             self.free = None;
@@ -169,15 +170,11 @@ impl Pool {
             self.free = Some(new);
         }
 
-        if prev.addr() != 0x0 {
-            Page::from(prev).write_next(next);
-        }
-
         page.zero();
-        Ok(page)
+        page
     }
 
-    fn free_page(&mut self, mut page: Page) -> Result<(), VmError> {
+    fn free_page(&mut self, mut page: Page) {
         let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
         let addr = page.addr;
         page.zero();
@@ -185,7 +182,11 @@ impl Pool {
         if let None = self.free {
             page.write_free(head_prev, head_next);
             self.free = Some(page);
-        } else if addr < head_prev {
+        } else {
+            (head_prev, head_next) = self.free.unwrap().read_free();
+        }
+        
+        if addr < head_prev {
             Page::from(head_prev).write_prev(addr);
             page.write_free(0x0 as *mut usize, head_prev);
         } else if addr < head_next {
@@ -199,7 +200,6 @@ impl Pool {
             (head_prev, head_next) = Page::from(head_next).read_free();
         }
         page.write_free(head_prev, head_next);
-        Ok(())
     }
 }
 
