@@ -178,7 +178,7 @@ impl Pool {
         let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
         let addr = page.addr;
         page.zero();
-        
+
         if let None = self.free {
             page.write_free(head_prev, head_next);
             self.free = Some(page);
@@ -186,17 +186,7 @@ impl Pool {
         } else {
             (head_prev, head_next) = self.free.unwrap().read_free();
         };
-        
-        if addr < head_prev {
-            Page::from(head_prev).write_prev(addr);
-            page.write_free(0x0 as *mut usize, head_prev);
-        } else if addr < head_next {
-            Page::from(head_prev).write_next(addr);
-            Page::from(head_next).write_prev(addr);
-            page.write_free(head_prev, head_next);
-        }
 
-        (head_prev, head_next) = Page::from(head_next).read_free();
         while addr < head_next && head_next != 0x0 as *mut usize {
             (head_prev, head_next) = Page::from(head_next).read_free();
         }
