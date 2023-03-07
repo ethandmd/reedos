@@ -15,6 +15,7 @@ use core::cell::OnceCell;
 /// Global physical page pool allocated by the kernel physical allocator.
 //static mut PAGEPOOL: PagePool = PagePool::new(bss_end(), dram_end());
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
+static mut GALLOC: OnceCell<GAlloc> = OnceCell::new();
 /// Global kernel page table.
 pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut();
 
@@ -48,6 +49,7 @@ pub struct TaskNode {
 /// kernel's page table struct.
 pub fn init() -> Result<(), PagePool>{
     unsafe { PAGEPOOL.set(PagePool::new(bss_end(), dram_end()))?; }
+    unsafe { GALLOC.set(GAlloc::new()); }
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
@@ -60,6 +62,18 @@ pub fn init() -> Result<(), PagePool>{
         }
     }
     Ok(())
+}
+
+pub fn galloc(size: usize) -> Result<*mut usize, VmError> {
+    unsafe {
+        GALLOC.get_mut().unwrap().alloc(size)
+    }
+}
+
+pub fn gdealloc(ptr: *mut usize, size: usize) {
+    unsafe {
+        GALLOC.get_mut().unwrap().dealloc(ptr, size)
+    }
 }
 
 pub unsafe fn test_palloc() {

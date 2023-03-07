@@ -1,7 +1,7 @@
 //! Kernel memory utilities
 use core::ops::{Deref, DerefMut};
 use core::mem::size_of;
-use crate::vm::GALLOC;
+use crate::vm::{galloc, gdealloc};
 
 /// Kernel heap allocated pointer. No guarantees on unique ownership
 /// or concurrent access.
@@ -15,7 +15,7 @@ impl<T> Kbox<T> {
         // How the allocater interface should be made use of.
         // Current constraints on allocator mean size_of::<T>() must be less than 4Kb
         let size = size_of::<T>();
-        match unsafe { (*GALLOC).alloc(size) } {
+        match galloc(size)  {
             Err(e) => {
                 panic!("Kbox can't allocate: {:?}", e)
             },
@@ -57,8 +57,6 @@ impl<T> DerefMut for Kbox<T> {
 
 impl<T: ?Sized> Drop for Kbox<T> {
     fn drop(&mut self) {
-        unsafe {
-            (*GALLOC).dealloc(self.inner as *mut usize, self.size);
-        }
+        gdealloc(self.inner as *mut usize, self.size);
     }
 }

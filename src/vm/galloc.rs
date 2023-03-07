@@ -72,7 +72,7 @@ fn round_up(mut s:u64) -> u64 {
 }
 
 fn get_page() -> Result<*mut usize, VmError> {
-    match unsafe { (*PAGEPOOL).palloc() } {
+    match unsafe { PAGEPOOL.get_mut().unwrap().palloc() } {
         Err(e) => {
             Err(e)
         },
