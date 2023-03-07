@@ -182,9 +182,10 @@ impl Pool {
         if let None = self.free {
             page.write_free(head_prev, head_next);
             self.free = Some(page);
+            return;
         } else {
             (head_prev, head_next) = self.free.unwrap().read_free();
-        }
+        };
         
         if addr < head_prev {
             Page::from(head_prev).write_prev(addr);
