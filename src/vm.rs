@@ -7,6 +7,7 @@ pub mod galloc;
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
+use galloc::GAlloc;
 use ptable::{kpage_init, PageTable};
 use process::Process;
 use core::cell::OnceCell;
@@ -47,6 +48,7 @@ pub struct TaskNode {
 /// kernel's page table struct.
 pub fn init() -> Result<(), PagePool>{
     unsafe { PAGEPOOL.set(PagePool::new(bss_end(), dram_end()))?; }
+    log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
     match kpage_init() {
