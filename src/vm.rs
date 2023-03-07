@@ -2,13 +2,13 @@
 pub mod palloc;
 pub mod ptable;
 pub mod process;
+pub mod galloc;
 
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
 use ptable::{kpage_init, PageTable};
 use process::Process;
-
 use core::cell::OnceCell;
 
 /// Global physical page pool allocated by the kernel physical allocator.
@@ -24,6 +24,7 @@ pub enum VmError {
     PartialPalloc,
     PallocFail,
     PfreeFail,
+    GNoSpace,
 }
 
 pub trait Resource {}
