@@ -54,6 +54,10 @@ impl PagePool {
     /// Free a page of physical memory by inserting into the doubly
     /// linked free list in order.
     pub fn pfree(&mut self, page: Page) -> Result<(), VmError> {
+        if !is_multiple(page.addr.addr(), PAGE_SIZE) {
+            panic!("Free page addr not page aligned.")
+        }
+
         let mut pool = self.pool.lock();
         Ok(pool.free_page(page))
     }
