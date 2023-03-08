@@ -184,11 +184,7 @@ impl GAlloc {
                         root.indirect.contents[i].valid =
                             root.indirect.contents[i].valid | (make_mask(in_use) << idx);
                         let data_page = root.indirect.contents[i].down as *mut usize;
-<<<<<<< HEAD
                         return Ok(data_page.offset(idx as isize));
-=======
-                        return Ok(unsafe { data_page.offset(idx as isize) });
->>>>>>> origin/6-Allocator
                     }
                 }
             }
