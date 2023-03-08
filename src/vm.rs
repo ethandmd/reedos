@@ -4,6 +4,7 @@ pub mod ptable;
 pub mod process;
 pub mod galloc;
 
+use core::ptr::null_mut;
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
@@ -48,8 +49,20 @@ pub struct TaskNode {
 /// Finally we set the global kernel page table `KPGTABLE` variable to point to the
 /// kernel's page table struct.
 pub fn init() -> Result<(), PagePool>{
-    unsafe { PAGEPOOL.set(PagePool::new(bss_end(), dram_end()))?; }
-    unsafe { GALLOC.set(GAlloc::new()); }
+    unsafe {
+        match PAGEPOOL.set(PagePool::new(bss_end(), dram_end())) {
+            Ok(_) => {},
+            Err(_) => {
+                panic!("vm double init.")
+            }
+        }
+        match GALLOC.set(GAlloc::new()) {
+            Ok(_) => {},
+            Err(_) => {
+                panic!("vm double init.")
+            }
+        }
+    }
     log!(Debug, "Successfully initialized kernel page pool...");
 
     // Map text, data, heap into kernel memory
@@ -66,13 +79,17 @@ pub fn init() -> Result<(), PagePool>{
 
 pub fn galloc(size: usize) -> Result<*mut usize, VmError> {
     unsafe {
-        GALLOC.get_mut().unwrap().alloc(size)
+        GALLOC.get_mut()
+            .unwrap()
+            .alloc(size)
     }
 }
 
 pub fn gdealloc(ptr: *mut usize, size: usize) {
     unsafe {
-        GALLOC.get_mut().unwrap().dealloc(ptr, size)
+        GALLOC.get_mut()
+            .unwrap()
+            .dealloc(ptr, size)
     }
 }
 
@@ -82,4 +99,20 @@ pub unsafe fn test_palloc() {
     allocd.addr.write(0xdeadbeaf);
     let _ = PAGEPOOL.get_mut().unwrap().pfree(allocd);
     log!(Debug, "Successful test of page allocation and freeing...");
+}
+
+pub fn test_galloc() {
+    let first = galloc(8).unwrap();
+    println!("asked for 8 bytes, got {:?}", first as usize);
+    let second = galloc(16).unwrap();
+    println!("asked for 16 bytes got {:?}", second as usize);
+    gdealloc(first, 8);
+    let third = galloc(16).unwrap();
+    println!("freed first and asked for 16 bytes, should match first {:?}", third as usize);
+
+    let mut hold: [*mut usize; 256] = [null_mut(); 256];
+    for i in 0.. {
+        hold[i] = galloc(16).unwrap();
+    }
+    println!("{:?} and {:?} should not be in the same page", first, hold[255]);
 }

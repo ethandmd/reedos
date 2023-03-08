@@ -110,7 +110,11 @@ fn main() -> ! {
         }
         log!(Info, "Initialized the kernel page table...");
         log!(Debug, "Testing page allocation and freeing...");
-        unsafe { vm::test_palloc() };
+        unsafe {
+            vm::test_palloc();
+        }
+        log!(Debug, "Testing general subpage allocation...");
+        vm::test_galloc();
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

@@ -134,9 +134,7 @@ impl GAlloc {
                     if open != -1 { open = i; }
                 } else {
                     // this is a down link we can follow
-                    let down = &mut (unsafe {
-                        *root.indirect.contents[i as usize].down
-                    });
+                    let down = &mut *root.indirect.contents[i as usize].down;
                     match Self::walk_alloc(size, down) {
                         Err(_) => {},
                         ret => { return ret; }
@@ -156,7 +154,7 @@ impl GAlloc {
                     }
                 };
                 // insert a new page
-                let p_ref = &mut (unsafe { *page });
+                let p_ref = &mut *page;
                 p_ref.indirect.level = root.indirect.level -1;
                 p_ref.indirect.valid = 0;
                 root.indirect.contents[open as usize].down = p_ref;
@@ -186,7 +184,7 @@ impl GAlloc {
                         root.indirect.contents[i].valid =
                             root.indirect.contents[i].valid | (make_mask(in_use) << idx);
                         let data_page = root.indirect.contents[i].down as *mut usize;
-                        return Ok(unsafe { data_page.offset(idx as isize) });
+                        return Ok(data_page.offset(idx as isize));
                     }
                 }
             }
@@ -205,9 +203,7 @@ impl GAlloc {
                 root.indirect.contents[open].valid = 0; // all free
                 // don't set page meta, because this is a data page
                 root.indirect.valid = root.indirect.valid | (1 << open); // down link valid
-                return Self::walk_alloc(size, &mut (unsafe {
-                    *(root.indirect.contents[open].down)
-                }));
+                return Self::walk_alloc(size, &mut *(root.indirect.contents[open].down));
             }
             return Err(VmError::GNoSpace);
         }
