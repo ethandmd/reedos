@@ -164,7 +164,6 @@ impl Pool {
     // in order to trigger the OutOfPages error.
     fn alloc_page(&mut self, mut page: Page) -> Page {
         let (prev, next) = page.read_free(); // prev is always 0x0
-        log!(Debug, "called alloc, prev was {:?}", prev);
         assert_eq!(prev, 0x0 as *mut usize);
 
         if next.addr() == 0x0 {
@@ -181,7 +180,6 @@ impl Pool {
 
     fn free_page(&mut self, mut page: Page) {
         let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
-        log!(Debug, "Called free");
         let addr = page.addr;
         page.zero();
 

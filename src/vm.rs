@@ -16,8 +16,6 @@ use core::cell::OnceCell;
 //static mut PAGEPOOL: PagePool = PagePool::new(bss_end(), dram_end());
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
 static mut GALLOC: OnceCell<GAlloc> = OnceCell::new();
-/// Global kernel page table.
-pub static mut KPGTABLE: *mut PageTable = core::ptr::null_mut();
 
 /// (Still growing) list of kernel VM system error cases.
 #[derive(Debug)]
@@ -66,8 +64,8 @@ pub fn init() -> Result<(), PagePool>{
 
     // Map text, data, heap into kernel memory
     match kpage_init() {
-        Ok(mut pt) => unsafe {
-            KPGTABLE = &mut pt;
+        Ok(pt) => {
+            pt.write_satp()
         },
         Err(_) => {
             panic!();
