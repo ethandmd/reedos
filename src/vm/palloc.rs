@@ -91,7 +91,7 @@ impl Page {
         }
     }
 
-    /// Write pointers to the previous and next pointers of the doubly 
+    /// Write pointers to the previous and next pointers of the doubly
     /// linked list to this page. We use the first 8 bytes of the page to
     /// store a ptr to the previous page, and the second 8 bytes to
     /// store a ptr to the next page.
@@ -164,6 +164,7 @@ impl Pool {
     // in order to trigger the OutOfPages error.
     fn alloc_page(&mut self, mut page: Page) -> Page {
         let (prev, next) = page.read_free(); // prev is always 0x0
+        log!(Debug, "called alloc, prev was {:?}", prev);
         assert_eq!(prev, 0x0 as *mut usize);
 
         if next.addr() == 0x0 {
@@ -180,6 +181,7 @@ impl Pool {
 
     fn free_page(&mut self, mut page: Page) {
         let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
+        log!(Debug, "Called free");
         let addr = page.addr;
         page.zero();
 
@@ -195,7 +197,15 @@ impl Pool {
         while addr > head_next && head_next != 0x0 as *mut usize {
             (head_prev, head_next) = Page::from(head_next).read_free();
         }
-        Page::from(head_next).write_prev(addr);
+        if head_next != 0x0 as *mut usize {
+            Page::from(head_next).write_prev(addr); // link back from next
+        }
+        if head_prev != 0x0 as *mut usize {
+            Page::from(head_prev).write_next(addr); // link forward from prev
+        } else {
+            // insert at the front
+            self.free = Some(page);
+        }
         page.write_free(head_prev, head_next);
     }
 }

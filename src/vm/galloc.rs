@@ -11,7 +11,7 @@ use crate::vm::*;
 /// If it is indirect, the second u64 is the valid/in use bits of the
 /// corresponding u64s in the current header.
 ///
-/// If this is an indirect header, then all futher u64 are paried. The
+/// If this is an indirect header, then all futher u64 are paired. The
 /// even indexed (first) u64 is a pointer dwon one level. The odd
 /// (second) one is the valid mask for that link. If the link is to a
 /// data layer, then it corresponds to the parts of the data layer in
@@ -22,10 +22,11 @@ use crate::vm::*;
 /// If this is a data layer, then the entire page is naturally aligned
 /// data. By that I mean that a pow of 2 chunk of size n is n-byte
 /// aligned.
+///
+/// This allocator works on 64byte chunks
 
-// I'd use page size but rust won't let me
-// type Header = [u64; 4096/64];
 
+// should be 16 bytes big exactly
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct HeaderPair {
@@ -38,12 +39,12 @@ struct HeaderPair {
 struct Indirect {
     level: u64,
     valid: u64,
-    contents: [HeaderPair; 255],
+    contents: [HeaderPair; 256], // 4096 / 16
 }
 
 #[derive(Clone, Copy)]
 union Header {
-    data: [u64; 4096/64],
+    data: [u64; 64],              // 4096 / 64
     indirect: Indirect,
 }
 
@@ -71,14 +72,33 @@ fn round_up(mut s:u64) -> u64 {
     s + 1
 }
 
+/// Returns the needed number of units to contain the given size
+fn chunk_size(mut size: u64) -> u64 {
+    size = round_up(size);
+    if size < 64 {
+        1
+    } else {
+        size / 64
+    }
+}
+
 fn get_page() -> Result<*mut usize, VmError> {
     match unsafe { PAGEPOOL.get_mut().unwrap().palloc() } {
         Err(e) => {
             Err(e)
         },
         Ok(page) => {
-            Ok(page.addr as *mut usize)
+            Ok(page.addr)
         }
+    }
+}
+
+fn free_page(addr: *mut usize) {
+    match unsafe { PAGEPOOL.get_mut().unwrap().pfree(Page::from(addr)) } {
+        Err(_) => {
+            panic!("Galloc double free passed to palloc");
+        },
+        Ok(()) => {}
     }
 }
 
@@ -110,7 +130,7 @@ impl GAlloc {
     }
 
     fn search_data_layer(size: u64, dl_mask: u64) -> Option<u64> {
-        let size = round_up(size) / 8; // pow 2, in usize units
+        let size = chunk_size(size); // number of units
         let search_mask = make_mask(size);
 
         let mut i = 0;
@@ -180,7 +200,7 @@ impl GAlloc {
                     None => {},
                     Some(idx) => {
                         // found space, mark and make pointer
-                        let in_use = round_up(size as u64) / 8; // how many to mark in use
+                        let in_use = chunk_size(size as u64); // how many to mark in use
                         root.indirect.contents[i].valid =
                             root.indirect.contents[i].valid | (make_mask(in_use) << idx);
                         let data_page = root.indirect.contents[i].down as *mut usize;
@@ -189,7 +209,7 @@ impl GAlloc {
                 }
             }
             // couldn't find anything, try to add another data page
-            if open == -1 {
+            if open != -1 {
                 let open = open as usize;
                 let page: *mut Header = match get_page() {
                     Err(e) => {
@@ -268,7 +288,8 @@ impl GAlloc {
                     (found, false) => {
                         // trim branch and maybe report findings
                         root.indirect.valid = root.indirect.valid & !(1 << i);
-                        // TODO free the said down link
+                        // free lower page
+                        free_page(root.indirect.contents[i].down as *mut usize);
                         if root.indirect.valid == 0 {
                             // nothing more to check, report findings
                             return (found, false);
@@ -291,13 +312,13 @@ impl GAlloc {
                 if root.indirect.contents[i].down as usize == test_ptr {
                     // match!
                     let offset = ptr as usize & (PAGE_SIZE - 1);
-                    let clear_mask = make_mask(round_up(size as u64) / 8);
+                    let clear_mask = make_mask(chunk_size(size as u64));
                     root.indirect.contents[i].valid =
                         root.indirect.contents[i].valid & !(clear_mask << offset);
                     if root.indirect.contents[i].valid == 0 {
                         // free data page
-                        // TODO free page
                         root.indirect.valid = valid & !(1 << i);
+                        free_page(root.indirect.contents[i].down as *mut usize);
                         if root.indirect.valid == 0 {
                             // cleanup this indirect layer
                             return (true, false);

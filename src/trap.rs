@@ -40,7 +40,7 @@ pub extern "C" fn m_handler() {
         _ => {
             log::log!(
                 Warning,
-                "Uncaught machine mode interupt. mcause: {:X}",
+                "Uncaught machine mode interupt. mcause: 0x{:x}",
                 mcause
             );
             panic!();
@@ -57,7 +57,7 @@ pub extern "C" fn s_handler() {
         _ => {
             log::log!(
                 Warning,
-                "Uncaught supervisor mode interupt. scause: {:X}",
+                "Uncaught supervisor mode interupt. scause: 0x{:x}",
                 cause
             );
             panic!()

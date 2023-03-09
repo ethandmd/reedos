@@ -4,7 +4,6 @@ pub mod ptable;
 pub mod process;
 pub mod galloc;
 
-use core::ptr::null_mut;
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
@@ -110,9 +109,7 @@ pub fn test_galloc() {
     let third = galloc(16).unwrap();
     println!("freed first and asked for 16 bytes, should match first {:?}", third as usize);
 
-    let mut hold: [*mut usize; 256] = [null_mut(); 256];
-    for i in 0.. {
-        hold[i] = galloc(16).unwrap();
-    }
-    println!("{:?} and {:?} should not be in the same page", first, hold[255]);
+    let back_half = galloc(4096 / 2).unwrap();
+    let next_page = galloc(16).unwrap();
+    println!("{:?} and {:?} should not be in the same page", back_half, next_page);
 }
