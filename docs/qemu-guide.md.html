@@ -1,0 +1,25 @@
+# Qemu
+This document collects information and tips for Qemu.
+
+In general `gdb` will be far more useful, but Qemu has some useful stuff when thinking at the system level.
+
+## Commands
+`Ctrla c`
+: Starts (qemu) command mode. Executable continues
+`xp/20i 0x8000000`
+: disassembles 20 instructions, start addr
+`info registers`
+: shows the current state of registers
+`info mtree`
+: the memory map
+`system_reset`
+: reboots the machine (hello world again!)
+`quit`
+: halts execution and exits qemu completely
+`help`
+: top-level help
+`help info (or other command)`
+: help with that command
+
+
+<!- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
