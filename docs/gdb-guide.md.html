@@ -1,0 +1,101 @@
+# gdb
+This page collects information about the gnu debugger `gdb`.
+
+Recall that you will likely need to invoke this program as something like:
+```
+$ riscv64-unknown-elf-gdb
+```
+
+The general loop of using `gdb` is issuing commands, and waiting for the program to stop again, or for the output of the informational command. The most useful commands are listed below.
+
+## Invokation
+`gdb` can be invoked without arguments, but you likely want to use `gdb reedos.ELF` to load the symbols from the elf so that you can see what you are doing with human readable symbol names.
+
+This project has a .gdbinit file, which means if you invoke gdb in the root directory then it should automatically be set up as you would want it for this project. In short it establish a expected connection with qemu and waits for it to become active. The makefile is set up to talk to this port if evoked with `DEBUG=1`:
+```
+$ make run DEBUG=1
+```
+or
+```
+$ DEBUG=1 make run
+```
+
+## Expressions
+Expressions are very common as arguments to `gdb` commands. Most basic rust expressions should work, although calling functions may not. Variable names are evaluated based on the scope of the current line. `$regname` acts as if it was a variable name for the given register, even special ones like `scause`.
+
+## Formatting
+Many command take a format in the form of `/FMT` after the command name. They vary slightly, but the rough format is
+```
+/[#][o/x/d/u/t/f/a/i/c/s/z][b/h/w/g]
+```
+The first number is the number of units to print. Units are either specified by the last letter, inferred by the variable type, or use the default (last thing specified).
+
+The second letter, if provided, is how to format the printed output:
+- o: octal
+- x: hex
+- d: decimal
+- u: unsigned decimal
+- t: binary (stands for two)
+- f: float
+- a: address
+- i: instruction (disassembles into optcode)
+- c: char
+- s: string
+- z: zero padded hex
+
+The third letter, if provided, is the size of data to consider:
+- b: byte
+- h: half-word (2 bytes)
+- w: word (4 bytes)
+- g: giant-word (8 bytes)
+
+## Commands
+Any command can be abbreviated to as few letter as it takes to make it unique (in order, not necessarily contiguous), or many common ones have single letter abbreviations noted below.
+
+Pressing enter with and empty prompt performs the same command again. This is very useful for things like `step` and `next`.
+
+help [command]
+: Obvious. Gives top level help or specific to the given command. The command can have spaces in it.
+kill|k
+: Kill the debugged program. In this case this closes qemu.
+quit|q
+: Quit the debugger. Note that this releases qemu and it **will** continue to execute.
+continue|c
+: Continue the execution until there is a reason to stop again. See breakpoints.
+next|n
+: Go to the next line of the source file. This continues the program until the next line. Note that this steps **over** function calls. See step.
+step|s
+: Step to the next executed source line. This continues until the next line, stepping **into** function calls. See next.
+step instruction|si
+: Perform exactly one instruction. See display for how to make this not miserable.
+info|i [various]
+: Get information on the specified thing. Several useful things could be
+
+ - i register/reg: prints the general register
+ - i reg [regname]: prints the specified register, including special ones like `scause`. 'all' is exhaustive.
+ - i frame/f: prints information about the current stack frame
+ - i f level/ #: prints information about the indicated stack frame by level
+
+print|p /FMT EXPR
+: Evaluates `EXPR` and prints the result. Its complicated to call rust code from here, but things like variable names or arithmetic with variables give expected results. Note that `gdb` uses the current scope for finding names. Globals can be given by their full name even if they are not in scope, like `reedos::vm::KPGTABLE`.
+x /FMT addr
+: Examine the indicated memory. Dumps the memory at said location. See formatting for general help, but in short `x/#t 0xdeadbeef` formats the output in units of `t`, which also controls the radix of output, and `#` is the number of said units to dump.
+break|b [location] [thread T] [if CONDITION]
+: Inserts a breakpoint at `location` or the current line. A breakpoint will halt a continuing program when it is encountered. `location` can be an address, or any expression that evaluates to an address (usefully a function name does what you want). If `thread T` is included the breakpoint only stops execution for the thread with threadnum `T`. If `if COND` is included, then execution is only stopped if evaluating `COND` at the breakpoint results in a non-zero value.
+
+ - `b page_walk`: allows you to continue until the start of `page_walk`, then regain control.
+ - `b alloc if size >= 0x1000`: breaks at the start of alloc if `size` (scoped like it would be at the top of `alloc`) is larger than 4096.
+
+delete [#]
+: Remove an existing breakpoint given by `#` (obtained when setting it), or all of them.
+watch EXPR
+: Halts execution whenever the memory location specified by `EXPR` changes. Evaluates `EXPR` in the scope of the current instruction/line. Prints both the old and new values and returns control to the prompt. To watch a constant address, cast the address as a pointer first. Causes significant slowdown.
+unwatch [#]
+: Removes watchpoint given by `#` or all of them.
+display /FMT EXPR
+: Evaluates and prints `EXPR` whenever program execution stops. Uses the current lines scope. Very useful for monitoring commonly changing values when using `next` especially. When using `step instruction`, using `display/i $pc` is heavily recommended so you can see what the next instruction is.
+undisplay [#]
+: Remove existing display request given by `#` or all of them.
+
+
+<!- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>
