@@ -179,32 +179,23 @@ impl Pool {
     }
 
     fn free_page(&mut self, mut page: Page) {
-        let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
+        let (head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
         let addr = page.addr;
         page.zero();
 
         match self.free {
-            Some(page) => { head_next = page.addr; }
+            Some(mut head) => {
+                head_next = page.addr;
+                head.write_prev(addr);
+            }
             None => {
                 page.write_free(head_prev, head_next);
                 self.free = Some(page);
                 return;
             }
         }
-
-        while addr > head_next && head_next != 0x0 as *mut usize {
-            (head_prev, head_next) = Page::from(head_next).read_free();
-        }
-        if head_next != 0x0 as *mut usize {
-            Page::from(head_next).write_prev(addr); // link back from next
-        }
-        if head_prev != 0x0 as *mut usize {
-            Page::from(head_prev).write_next(addr); // link forward from prev
-        } else {
-            // insert at the front
-            self.free = Some(page);
-        }
         page.write_free(head_prev, head_next);
+        self.free = Some(page);
     }
 }
 
