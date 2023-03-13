@@ -3,12 +3,13 @@ pub mod palloc;
 pub mod ptable;
 pub mod process;
 pub mod galloc;
+pub mod kalloc;
 
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
 use galloc::GAlloc;
-use ptable::{kpage_init, PageTable};
+use ptable::kpage_init; //, PageTable};
 use process::Process;
 use core::cell::OnceCell;
 
@@ -25,6 +26,7 @@ pub enum VmError {
     PallocFail,
     PfreeFail,
     GNoSpace,
+    Koom,
 }
 
 pub trait Resource {}

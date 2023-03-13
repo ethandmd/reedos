@@ -17,8 +17,8 @@ const PTE_GLOBAL: usize = 1 << 5;
 const PTE_ACCESSED: usize = 1 << 6;
 const PTE_DIRTY: usize = 1 << 7;
 
-type VirtAddress = *mut usize;
-type PhysAddress = *mut usize;
+pub type VirtAddress = *mut usize;
+pub type PhysAddress = *mut usize;
 type PTEntry = usize;
 /// Supervisor Address Translation and Protection.
 /// Section 4.1.12 of risc-v priviliged ISA manual.
