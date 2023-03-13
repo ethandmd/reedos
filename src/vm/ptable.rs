@@ -261,7 +261,7 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         if let Err(kernel_stack) = page_map(
             kpage_table,
             stack,
-            stack as *mut usize,
+            stack,
             PAGE_SIZE * 2,
             PTE_READ | PTE_WRITE,
         ) {
@@ -283,7 +283,7 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         if let Err(intstack_m) = page_map(
             kpage_table,
             m_intstack,
-            m_intstack as *mut usize,
+            m_intstack,
             PAGE_SIZE,
             PTE_READ | PTE_WRITE
         ) {
@@ -294,7 +294,7 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         if let Err(intstack_s) = page_map(
             kpage_table,
             s_intstack,
-            s_intstack as *mut usize,
+            s_intstack,
             PAGE_SIZE,
             PTE_READ | PTE_WRITE
         ) {
