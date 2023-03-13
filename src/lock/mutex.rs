@@ -7,6 +7,7 @@
 /// Opportunity for improvement on interrupt safe locks. 
 use core::cell::UnsafeCell;
 use core::sync::atomic::*;
+use core::hint::spin_loop;
 
 /// Returned from successfully locking a mutex.
 pub struct MutexGuard<'a, T> {
@@ -59,9 +60,9 @@ impl<T> Mutex<T> {
     /// after lock is acquired.
     pub fn lock(&self) -> MutexGuard<T> {
         // Use Acquire memory order to load lock value.
-        // TODO:
-        // Spin loop improvement.
-        while self.lock_state.swap(1, Ordering::Acquire) == 1 {}
+        while self.lock_state.swap(1, Ordering::Acquire) == 1 {
+            spin_loop();
+        }
         MutexGuard { mutex: self }
     }
 }
