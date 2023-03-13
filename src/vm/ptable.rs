@@ -253,14 +253,16 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         "Succesfully mapped kernel data into kernel pgtable..."
     );
 
+    // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
+    // problem.
     let base = stacks_start();
     for s in 0..NHART {
-        let stack = unsafe { base.byte_add(PAGE_SIZE * (1 + s * 2)) };
+        let stack = unsafe { base.byte_add(PAGE_SIZE * (1 + s * 3)) };
         if let Err(kernel_stack) = page_map(
             kpage_table,
             stack,
             stack as *mut usize,
-            PAGE_SIZE,
+            PAGE_SIZE * 2,
             PTE_READ | PTE_WRITE,
         ) {
             return Err(kernel_stack);
@@ -270,6 +272,40 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
             "Succesfully mapped kernel stack {} into kernel pgtable...",
             s
         );
+    }
+    
+    // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
+    // problem.
+    let base = intstacks_start();
+    for i in 0..NHART {
+        let m_intstack = unsafe { base.byte_add(PAGE_SIZE * (1 + i * 4)) };
+        // Map hart i m-mode handler.
+        if let Err(intstack_m) = page_map(
+            kpage_table,
+            m_intstack,
+            m_intstack as *mut usize,
+            PAGE_SIZE,
+            PTE_READ | PTE_WRITE
+        ) {
+            return Err(intstack_m)
+        }
+        // Map hart i s-mode handler
+        let s_intstack = unsafe { m_intstack.byte_add(PAGE_SIZE * 2) };
+        if let Err(intstack_s) = page_map(
+            kpage_table,
+            s_intstack,
+            s_intstack as *mut usize,
+            PAGE_SIZE,
+            PTE_READ | PTE_WRITE
+        ) {
+            return Err(intstack_s)
+        }
+        log!(
+            Debug,
+            "Succesfully mapped interrupt stack for hart {} into kernel pgtable...",
+            i
+        );
+
     }
 
     if let Err(bss_map) = page_map(
