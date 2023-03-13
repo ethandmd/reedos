@@ -105,9 +105,6 @@ fn main() -> ! {
         trap::init();
         log!(Info, "Finished trap init...");
         let _ = vm::init();
-        unsafe {
-            (*vm::KPGTABLE).write_satp();
-        }
         log!(Info, "Initialized the kernel page table...");
         log!(Debug, "Testing page allocation and freeing...");
         unsafe {

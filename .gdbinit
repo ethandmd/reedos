@@ -6,3 +6,10 @@ info threads
 set schedule-multiple on
 set output-radix 16
 set print pretty on
+define hook-quit
+    set confirm off
+end
+define hook-kill
+    set confirm off
+end
+
