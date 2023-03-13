@@ -34,7 +34,7 @@ SECTIONS
   .stacks : {
       . = ALIGN(0x1000);
       PROVIDE(_stacks_start = .);
-      . = . + (4096 * 4 * 2); /* NHARTS with a guard page each, unstable */
+      . = . + (4096 * 3 * 2); /* NHARTS with a guard page each, unstable */
       PROVIDE(_stacks_end = .);
   }
   .intstacks : {
