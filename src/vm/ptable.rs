@@ -34,22 +34,19 @@ pub struct PageTable {
     base: PhysAddress, // Page Table located at base address.
 }
 
-macro_rules! vpn {
-    ($p:expr, $l:expr) => {
-        (($p).addr()) >> (12 + 9 * $l) & 0x1FF
-    };
+#[inline(always)]
+fn vpn(ptr: VirtAddress, level: usize) -> usize{
+    ptr.addr() >> (12 + 9 * level) & 0x1FF
 }
 
-macro_rules! PteToPhy {
-    ($p:expr) => {
-        ((($p) >> 10) << 12) as *mut usize
-    };
+#[inline(always)]
+fn pte_to_phy(pte: PTEntry) -> PhysAddress {
+    ((pte >> 10) << 12) as *mut usize
 }
 
-macro_rules! PhyToPte {
-    ($p:expr) => {
-        (((($p).addr()) >> 12) << 10)
-    };
+#[inline(always)]
+fn phy_to_pte(ptr: PhysAddress) -> PTEntry {
+    ((ptr.addr()) >> 12) << 10
 }
 
 macro_rules! PteGetFlag {
@@ -64,10 +61,9 @@ macro_rules! PteSetFlag {
     };
 }
 
-macro_rules! PhyToSATP {
-    ($pte:expr) => {
-        (1 << 63) | ((($pte).addr()) >> 12)
-    };
+#[inline(always)]
+fn phy_to_satp(ptr: PhysAddress) -> usize{
+    (1 << 63) | (ptr.addr() >> 12)
 }
 
 macro_rules! PageAlignDown {
@@ -94,7 +90,7 @@ fn read_pte(pte: *mut PTEntry) -> PTEntry {
 impl From<PTEntry> for PageTable {
     fn from(pte: PTEntry) -> Self {
         PageTable {
-            base: PteToPhy!(pte),
+            base: pte_to_phy(pte),
         }
     }
 }
@@ -106,7 +102,7 @@ impl PageTable {
     }
     pub fn write_satp(&self) {
         flush_tlb();
-        write_satp(PhyToSATP!(self.base));
+        write_satp(phy_to_satp(self.base));
         flush_tlb();
     }
 }
@@ -118,7 +114,7 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
     let mut table = pt.clone();
     assert!(va.addr() < VA_TOP);
     for level in (1..3).rev() {
-        let idx = vpn!(va, level);
+        let idx = vpn(va, level);
         let next: *mut PTEntry = table.index_mut(idx);
         table = match PteGetFlag!(*next, PTE_VALID) {
             true => PageTable::from(*next),
@@ -129,8 +125,8 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
                         .unwrap()
                         .palloc() {
                         Ok(pg) => {
-                            *next = PteSetFlag!(PhyToPte!(pg.addr), PTE_VALID);
-                            PageTable::from(PhyToPte!(pg.addr))
+                            *next = PteSetFlag!(phy_to_pte(pg.addr), PTE_VALID);
+                            PageTable::from(phy_to_pte(pg.addr))
                         }
                         Err(e) => return Err(e),
                     }
@@ -142,7 +138,7 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
     }
     // Last, return PTE leaf. Assuming we are all using 4K pages right now.
     // Caller's responsibility to check flags.
-    let idx = vpn!(va, 0);
+    let idx = vpn(va, 0);
     Ok(table.index_mut(idx))
 }
 
@@ -170,7 +166,7 @@ fn page_map(
                 if read_pte(pte_addr) & PTE_VALID != 0 {
                     return Err(VmError::PallocFail);
                 }
-                set_pte(pte_addr, PteSetFlag!(PhyToPte!(phys), flag | PTE_VALID));
+                set_pte(pte_addr, PteSetFlag!(phy_to_pte(phys), flag | PTE_VALID));
                 start = start.map_addr(|addr| addr + PAGE_SIZE);
                 phys = phys.map_addr(|addr| addr + PAGE_SIZE);
             }
