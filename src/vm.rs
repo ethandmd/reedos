@@ -3,20 +3,18 @@ pub mod palloc;
 pub mod ptable;
 pub mod process;
 pub mod galloc;
-pub mod kalloc;
+pub mod vmalloc;
 
 use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
-use galloc::GAlloc;
 use ptable::kpage_init; //, PageTable};
 use process::Process;
 use core::cell::OnceCell;
 
 /// Global physical page pool allocated by the kernel physical allocator.
-//static mut PAGEPOOL: PagePool = PagePool::new(bss_end(), dram_end());
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
-static mut GALLOC: OnceCell<GAlloc> = OnceCell::new();
+static mut VMALLOC: OnceCell<vmalloc::Kalloc> = OnceCell::new();
 
 /// (Still growing) list of kernel VM system error cases.
 #[derive(Debug)]
@@ -41,6 +39,14 @@ pub struct TaskNode {
     next: Option<Kbox<TaskNode>>,
 }
 
+pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
+    unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
+}
+
+pub fn kfree(ptr: *mut usize) {
+    unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
+}
+
 /// Initialize the kernel VM system.
 /// First, setup the kernel physical page pool.
 /// We start the pool at the end of the .bss section, and stop at the end of physical memory.
@@ -50,12 +56,6 @@ pub struct TaskNode {
 pub fn init() -> Result<(), PagePool>{
     unsafe {
         match PAGEPOOL.set(PagePool::new(bss_end(), dram_end())) {
-            Ok(_) => {},
-            Err(_) => {
-                panic!("vm double init.")
-            }
-        }
-        match GALLOC.set(GAlloc::new()) {
             Ok(_) => {},
             Err(_) => {
                 panic!("vm double init.")
@@ -76,21 +76,7 @@ pub fn init() -> Result<(), PagePool>{
     Ok(())
 }
 
-pub fn galloc(size: usize) -> Result<*mut usize, VmError> {
-    unsafe {
-        GALLOC.get_mut()
-            .unwrap()
-            .alloc(size)
-    }
-}
 
-pub fn gdealloc(ptr: *mut usize, size: usize) {
-    unsafe {
-        GALLOC.get_mut()
-            .unwrap()
-            .dealloc(ptr, size)
-    }
-}
 
 pub unsafe fn test_palloc() {
     let allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
@@ -98,18 +84,4 @@ pub unsafe fn test_palloc() {
     allocd.addr.write(0xdeadbeaf);
     let _ = PAGEPOOL.get_mut().unwrap().pfree(allocd);
     log!(Debug, "Successful test of page allocation and freeing...");
-}
-
-pub fn test_galloc() {
-    let first = galloc(8).unwrap();
-    println!("asked for 8 bytes, got {:?}", first as usize);
-    let second = galloc(16).unwrap();
-    println!("asked for 16 bytes got {:?}", second as usize);
-    gdealloc(first, 8);
-    let third = galloc(16).unwrap();
-    println!("freed first and asked for 16 bytes, should match first {:?}", third as usize);
-
-    let back_half = galloc(4096 / 2).unwrap();
-    let next_page = galloc(16).unwrap();
-    println!("{:?} and {:?} should not be in the same page", back_half, next_page);
 }
