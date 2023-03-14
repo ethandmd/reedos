@@ -38,9 +38,13 @@ impl Header {
         self.fields = self.fields | HEADER_USED;
     }
 
+    fn set_unused(&mut self) {
+        self.fields = self.fields & !HEADER_USED;
+    }
+
     // Clear size bits. Set size bits to size.
     fn set_size(&mut self, size: usize) {
-        self.fields = (self.fields & !MAX_CHUNK_SIZE) | size;
+        self.fields = (self.fields & !(0x1000 - 1)) | size;
     }
 
     // Unsafe write header data to memory at dest.
@@ -56,7 +60,7 @@ impl Header {
         let next_size = old_size - new_size;
         self.set_size(new_size);
         let next_addr = cur_addr.map_addr(|addr| addr + HEADER_SIZE + new_size);
-        let next_header = Header { fields: next_size };
+        let next_header = Header { fields: next_size - HEADER_SIZE }; // make space for inserted header
         next_header.write_to(next_addr);
         (next_header, next_addr)
     }
@@ -80,27 +84,44 @@ impl Kalloc {
         }
     }
 
-    fn alloc(&mut self, size: usize) -> Result<*mut usize, VmError> {
+    fn alloc(&mut self, mut size: usize) -> Result<*mut usize, VmError> {
         // Start tracks address of each header.
         let mut start = self.head;
         let mut head = Header::from(start);
+        size = if size < 8 {8} else {size};
 
         // Remove redundancy + use some helper fns.
         while start != self.end {
             let chunk_size = head.chunk_size();
-            if chunk_size < size {
-                start = start.map_addr(|addr| addr + HEADER_SIZE + chunk_size);
-                head = Header::from(start);
-            } else if !head.is_free() {
+            if chunk_size < size || !head.is_free() {
                 start = start.map_addr(|addr| addr + HEADER_SIZE + chunk_size);
                 head = Header::from(start);
             } else {
                 head.set_used();
-                let (next, next_addr) = head.split(size, start);
-                next.write_to(next_addr);
-                return Ok(start.map_addr(|addr| addr + size))
+                if size != chunk_size {
+                    let (next, next_addr) = head.split(size, start);
+                    next.write_to(next_addr);
+                }
+                return Ok(start.map_addr(|addr| addr + HEADER_SIZE))
             }
         }
         Err(VmError::Koom)
+    }
+
+    // TODO if you call alloc in order and then free in order this
+    // doesn't merge, as you can't merge backwards. Consider a merging
+    // pass when allocting.
+    fn free(&mut self, ptr: *mut usize) {
+        let chunk_loc = ptr.map_addr(|addr| addr - HEADER_SIZE);
+        let head = Header::from(chunk_loc);
+        assert!(!head.is_free(), "Kalloc double free.");
+        head.set_unused();
+        let next = Header::from(chunk_loc.map_addr(
+            |addr| addr + HEADER_SIZE + head.chunk_size()));
+        if !(next.is_free()) {
+            // back to back free, merge
+            head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
+        }
+        head.write_to(chunk_loc);
     }
 }
