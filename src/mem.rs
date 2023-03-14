@@ -10,7 +10,7 @@ pub struct Kbox<T: ?Sized> {
     size: usize,
 }
 
-impl<T: ?Sized> Kbox<T> {
+impl<T> Kbox<T> {
     /// Note that as this exists currently, data is passed by value
     /// into new, which means that the initial contents of a box MUST
     /// be composed on the stack and passed here to be copied into the
@@ -68,6 +68,6 @@ impl<T> DerefMut for Kbox<T> {
 
 impl<T: ?Sized> Drop for Kbox<T> {
     fn drop(&mut self) {
-        kfree(self.inner as *mut usize, self.size);
+        kfree(self.inner as *mut usize);
     }
 }

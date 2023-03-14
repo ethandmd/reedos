@@ -37,6 +37,7 @@ struct Header {
 // 63                                     11             0
 //
 #[repr(C)]
+#[derive(Copy, Clone)]
 struct Zone {
     base: *mut usize,   // This zone's address.
     next: usize,        // Next zone's address + this zone's ref count.
@@ -106,6 +107,14 @@ impl Header {
         next_header.write_to(next_addr);
         (next_header, next_addr)
     }
+
+    fn merge(&mut self, next: Self, next_addr: *mut usize) {
+        assert!(next.is_free());
+        assert!(self.is_free());
+        let size = self.chunk_size() + next.chunk_size();
+        self.set_size(size);
+        unsafe { next_addr.write(0); }
+    }
 }
 
 // Assumes the first byte of a zone is the zone header.
@@ -130,7 +139,7 @@ impl Zone {
     fn get_refs(&self) -> usize {
         self.next & (4095)
     }
-    
+
     fn get_next(&self) -> Result<usize, KallocError> {
         let next_addr = self.next & !(PAGE_SIZE - 1);
         if next_addr == 0x0 {
@@ -183,14 +192,29 @@ impl Zone {
         }
     }
 
-    fn next_zone(&self) -> Option<Zone> {
-        match self.get_next() {
-            Ok(addr) => Some(Zone::from(addr as *mut usize)),
-            Err(_) => None,
+    fn next_zone(&self) -> Result<Zone, KallocError> {
+        if let Ok(addr) = self.get_next() {
+            Ok(Zone::from(addr as *mut usize))
+        } else {
+            Err(KallocError::NullZone)
         }
     }
+    
+    // Only call from Kalloc.shrink_pool() to ensure this is not the first
+    // zone in the pool.
+    fn free_self(&mut self) {
+        assert!(self.get_refs() == 0);
+        let prev_base = unsafe { self.base.byte_sub(0x1000) };
+        let mut prev_zone = Zone::from(prev_base);
+        if let Ok(next_zone) = self.next_zone() {
+            unsafe { prev_zone.write_next(next_zone.base); }
+        } else {
+            unsafe { prev_zone.write_next(0x0 as *mut usize); }
+        }
+        let _ = pfree(Page::from(self.base));
+    }
 
-    // Scan this zone for a free chunk of the right size.
+    // Scan this zone for the first free chunk of size >= requested size.
     // First 8 bytes of a zone is the Zone.next field.
     // Second 8 bytes is the first header of the zone.
     fn scan(&mut self, size: usize) -> Option<*mut usize> {
@@ -199,13 +223,20 @@ impl Zone {
         // Start and end (start + PAGE_SIZE) bounds of zone.
         let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
         // Get the first header in the zone.
-        let head = unsafe { Header::from(curr) };
+        let mut head = Header::from(curr);
 
         while curr < end {
             let chunk_size = head.chunk_size();
             if chunk_size < size || !head.is_free() {
+                let (mut prev, trail) = (head, curr);
                 curr = curr.map_addr(|addr| addr + HEADER_SIZE + chunk_size);
                 head = Header::from(curr);
+
+                // TODO: Is not pretty, make pretty.
+                if prev.is_free() && head.is_free() {
+                    prev.merge(head, curr);
+                    (head, curr) = (prev, trail);
+                }
             } else {
                 alloc_chunk(size, curr, self, &mut head);
                 return Some(curr.map_addr(|addr| addr + HEADER_SIZE))
@@ -225,7 +256,7 @@ fn alloc_chunk(size: usize, ptr: *mut usize, zone: &mut Zone, head: &mut Header)
     }
 }
 
-unsafe fn write_zone_header_pair(zone: Zone, header: Header) {
+unsafe fn write_zone_header_pair(zone: &Zone, header: &Header) {
     let base = zone.base;
     base.write(zone.next);
     base.byte_add(1).write(header.fields);
@@ -238,20 +269,26 @@ impl Kalloc {
         // New page is the first zone in the Kalloc pool.
         let zone = Zone::new(start.addr);
         let head = Header::new(MAX_CHUNK_SIZE);
-        unsafe { write_zone_header_pair(zone, head); }
+        unsafe { write_zone_header_pair(&zone, &head); }
         Kalloc {
             head: start.addr,
             end: start.addr.map_addr(|addr| addr + 0x1000),
         }
     }
 
-    fn grow_pool(&mut self, tail: Zone) -> Result<(Zone, Header), VmError> {
+    fn grow_pool(&self, tail: &mut Zone) -> Result<(Zone, Header), VmError> {
         let page = palloc()?;
         unsafe { tail.write_next(page.addr); }
         let zone = Zone::new(page.addr);
         let head = Header::new(MAX_CHUNK_SIZE);
-        unsafe { write_zone_header_pair(zone, head); }
+        unsafe { write_zone_header_pair(&zone, &head); }
         Ok((zone, head))
+    }
+
+    fn shrink_pool(&self, mut zone: Zone) {
+        if zone.base != self.head {
+            zone.free_self();
+        }
     }
 
     /// Finds the first fit for the requested size.
@@ -261,45 +298,50 @@ impl Kalloc {
     /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
     /// 4. If success, go to step 2a. Else, fail with OOM.
     pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
-        let mut curr = self.head;
-        let mut zone = Some(Zone::from(curr));
-        let mut trail = zone.unwrap();
+        let curr = self.head;
+        let end = self.end.map_addr(|addr| addr - 0x1000);
+        let mut zone = Zone::from(curr);
+        let mut trail = zone;
         
-        while let Some(mut next_zone) = zone {
-            if let Some(ptr) = next_zone.scan(size) {
+        while zone.base <= end {
+            if let Some(ptr) = zone.scan(size) {
                 return Ok(ptr)
             } else {
-                trail = zone.unwrap();
-                zone = zone.unwrap().next_zone();
+                zone = zone.next_zone()?;
             }
         }
 
-        match self.grow_pool(trail) {
+        match self.grow_pool(&mut trail) {
              Ok((mut zone, mut head)) => {
-                 let ptr = unsafe { zone.base.map_addr(|addr| addr + ZONE_SIZE + HEADER_SIZE) };
+                 let ptr = zone.base.map_addr(|addr| addr + ZONE_SIZE + HEADER_SIZE);
                  alloc_chunk(size, ptr, &mut zone, &mut head);
                  Ok(ptr)
              },
-             Err(e) => Err(KallocError::OOM),
+             Err(_) => Err(KallocError::OOM),
         }
-
-        //Err(KallocError::OOM)
     }
 
     // TODO if you call alloc in order and then free in order this
     // doesn't merge, as you can't merge backwards. Consider a merging
     // pass when allocting.
     pub fn free(&mut self, ptr: *mut usize) {
-        let chunk_loc = ptr.map_addr(|addr| addr - HEADER_SIZE);
-        let mut head = Header::from(chunk_loc);
+        // Assume that round down to nearest page is the current zone base addr.
+        let mut zone = Zone::from(ptr.map_addr(|addr| addr & !(PAGE_SIZE - 1)));
+        let head_ptr = ptr.map_addr(|addr| addr - HEADER_SIZE);
+        let mut head = Header::from(head_ptr);
         assert!(!head.is_free(), "Kalloc double free.");
         head.set_unused();
-        let next = Header::from(chunk_loc.map_addr(
+
+        if let Err(_) = zone.decrement_refs() {
+            self.shrink_pool(zone);
+        }
+        
+        let next = Header::from(head_ptr.map_addr(
             |addr| addr + HEADER_SIZE + head.chunk_size()));
         if !(next.is_free()) {
             // back to back free, merge
             head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
         }
-        head.write_to(chunk_loc);
+        head.write_to(head_ptr);
     }
 }
