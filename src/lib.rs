@@ -7,6 +7,7 @@
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
 #![feature(once_cell)]
+#![feature(unsized_fn_params)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 
