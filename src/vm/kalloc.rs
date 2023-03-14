@@ -3,19 +3,54 @@ use core::mem::size_of;
 use crate::hw::param::PAGE_SIZE;
 use super::{palloc::Page, VmError};
 
-const MAX_CHUNK_SIZE: usize = 4088; // PAGE_SIZE - HEADER_SIZE = 4096 - 8 = 4088.
+const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 = 4088.
 const HEADER_SIZE: usize = size_of::<Header>();
-const HEADER_USED: usize = 0x1000;
+const ZONE_SIZE: usize = 8;
+const HEADER_USED: usize = 1 << 12; // Chunk is in use flag.
 
-// 8-byte minimum allocation size,
-// 4096-byte maximum allocation size.
-// Guarantee that address of header + size = start of data.
-// Size must be <= 4088 Bytes.
+// 8 byte minimum allocation size,
+// 4096-8-8=4080 byte maximum allocation size.
+// Guarantee that address of header + header_size = start of data.
+// Size must be <= 4080 Bytes.
 // Bits 0-11 are size (2^0 - (2^12 - 1))
-// Bit 12 is free/used.
+// Bit 12 is Used.
+//
+// Header:
+// ┌────────────────────────────────────┬─┬──────────────┐
+// │    Unused / Reserved               │U│ Chunk Size   │
+// └────────────────────────────────────┴─┴──────────────┘
+// 63                                   12 11            0
+//
 #[repr(C)]
 struct Header {
     fields: usize, // Could be a union?
+}
+
+// An allocation zone is the internal representation of a page.
+// Each zone contains the address of the next zone (page aligned),
+// plus the number of in use chunks within the zone (refs count).
+//
+// Zone.next:
+// ┌──────────────────────────────────────┬──────────────┐
+// │  next zone address (page aligned)    │ refs count   │
+// └──────────────────────────────────────┴──────────────┘
+// 63                                     11             0
+//
+#[repr(C)]
+struct Zone {
+    base: *mut usize,   // This zone's address.
+    next: usize,        // Next zone's address + this zone's ref count.
+}
+
+struct Kalloc {
+    head: *mut usize, // Address of first zone.
+    end: *mut usize,
+}
+
+enum KallocError {
+    MaxRefs,
+    MinRefs,
+    NullZone,
 }
 
 impl From<*mut usize> for Header {
@@ -26,6 +61,11 @@ impl From<*mut usize> for Header {
 }
 
 impl Header {
+    fn new(size: usize) -> Self {
+        assert!(size <= MAX_CHUNK_SIZE);
+        Header { fields: size }
+    }
+
     fn chunk_size(&self) -> usize {
         self.fields & 0xFFF
     }
@@ -66,21 +106,104 @@ impl Header {
     }
 }
 
-struct Kalloc {
-    head: *mut usize, // Address of next free header.
-    end: *mut usize,
+// Assumes the first byte of a zone is the zone header.
+// Next byte is the chunk header.
+impl From<*mut usize> for Zone {
+    fn from(src: *mut usize) -> Self {
+        Zone { 
+            base: src, 
+            next: unsafe { src.read() }
+        }
+    }
+}
+
+impl Zone {
+    fn new(base: *mut usize) -> Self {
+        Zone {
+            base,
+            next: 0x0,
+        }
+    }
+
+    fn get_refs(&self) -> usize {
+        self.next & (4095)
+    }
+    
+    fn get_next(&self) -> Result<usize, KallocError> {
+        let next_addr = self.next & !(PAGE_SIZE - 1);
+        if next_addr == 0x0 {
+            Err(KallocError::NullZone)
+        } else {
+            Ok(next_addr)
+        }
+    }
+    
+    // Read the next field to get the next zone address.
+    // Discard this zone's refs count.
+    // Write base address with next zone address and new refs count.
+    #[inline(always)]
+    unsafe fn write_refs(&mut self, new_count: usize) {
+        let next_addr = match self.get_next() {
+            Err(_) => 0x0,
+            Ok(ptr) => ptr,
+        };
+
+        self.base.write(next_addr | new_count);
+    }
+
+    // Read the current next field to get the refs count.
+    // Discard this zone's next addr.
+    // Write base address with new next zone address and refs count.
+    unsafe fn write_next(&mut self, new_next: *mut usize) {
+        let refs = self.get_refs();
+        self.base.write(new_next.addr() | refs);
+    }
+
+    fn increment_refs(&mut self) -> Result<(), KallocError> {
+        let new_count = self.get_refs() + 1;
+        if new_count > 510 { 
+            Err(KallocError::MaxRefs) 
+        } else {
+            unsafe { self.write_refs(new_count); }
+            Ok(())
+        }
+    }
+
+    fn decrement_refs(&mut self) -> Result<(), KallocError> {
+        // Given a usize can't be < 0, I want to catch that and not cause a panic.
+        // This may truly be unnecessary, but just want to be cautious.
+        let new_count = self.get_refs() - 1;
+        if (new_count as isize) < 0 {
+            Err(KallocError::MinRefs)
+        } else {
+            unsafe { self.write_refs(new_count); }
+            Ok(())
+        }
+    }
+
+    fn next_zone(&self) -> Result<Zone, KallocError> {
+        let next_addr = self.get_next()?;
+        Ok(Zone::from(next_addr as *mut usize))
+    }
+}
+
+unsafe fn write_zone_header_pair(zone: Zone, header: Header) {
+    let base = zone.base;
+    base.write(zone.next);
+    base.byte_add(1).write(header.fields);
 }
 
 impl Kalloc {
     fn new(start: Page) -> Self {
         // Make sure start of allocation pool is page aligned.
         assert_eq!(start.addr.addr() & (PAGE_SIZE - 1), 0);
-        let head = Header { fields: MAX_CHUNK_SIZE };
-        head.write_to(start.addr);
-
+        // New page is the first zone in the Kalloc pool.
+        let zone = Zone::new(start.addr);
+        let head = Header::new(MAX_CHUNK_SIZE);
+        unsafe { write_zone_header_pair(zone, head); }
         Kalloc {
             head: start.addr,
-            end: unsafe { start.addr.byte_add(0x1000) },
+            end: start.addr.map_addr(|addr| addr + 0x1000),
         }
     }
 
@@ -113,7 +236,7 @@ impl Kalloc {
     // pass when allocting.
     fn free(&mut self, ptr: *mut usize) {
         let chunk_loc = ptr.map_addr(|addr| addr - HEADER_SIZE);
-        let head = Header::from(chunk_loc);
+        let mut head = Header::from(chunk_loc);
         assert!(!head.is_free(), "Kalloc double free.");
         head.set_unused();
         let next = Header::from(chunk_loc.map_addr(
