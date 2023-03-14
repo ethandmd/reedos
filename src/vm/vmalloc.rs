@@ -1,7 +1,7 @@
 use core::mem::size_of;
 
 use crate::hw::param::PAGE_SIZE;
-use super::{palloc::Page, VmError};
+use super::palloc::Page;
 
 const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 = 4088.
 const HEADER_SIZE: usize = size_of::<Header>();
@@ -42,15 +42,17 @@ struct Zone {
     next: usize,        // Next zone's address + this zone's ref count.
 }
 
-struct Kalloc {
+pub struct Kalloc {
     head: *mut usize, // Address of first zone.
     end: *mut usize,
 }
 
-enum KallocError {
+#[derive(Debug)]
+pub enum KallocError {
     MaxRefs,
     MinRefs,
     NullZone,
+    OOM,
 }
 
 impl From<*mut usize> for Header {
@@ -207,7 +209,7 @@ impl Kalloc {
         }
     }
 
-    fn alloc(&mut self, mut size: usize) -> Result<*mut usize, VmError> {
+    pub fn alloc(&mut self, mut size: usize) -> Result<*mut usize, KallocError> {
         // Start tracks address of each header.
         let mut start = self.head;
         let mut head = Header::from(start);
@@ -228,13 +230,13 @@ impl Kalloc {
                 return Ok(start.map_addr(|addr| addr + HEADER_SIZE))
             }
         }
-        Err(VmError::Koom)
+        Err(KallocError::OOM)
     }
 
     // TODO if you call alloc in order and then free in order this
     // doesn't merge, as you can't merge backwards. Consider a merging
     // pass when allocting.
-    fn free(&mut self, ptr: *mut usize) {
+    pub fn free(&mut self, ptr: *mut usize) {
         let chunk_loc = ptr.map_addr(|addr| addr - HEADER_SIZE);
         let mut head = Header::from(chunk_loc);
         assert!(!head.is_free(), "Kalloc double free.");
