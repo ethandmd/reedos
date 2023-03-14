@@ -259,11 +259,11 @@ fn alloc_chunk(size: usize, ptr: *mut usize, zone: &mut Zone, head: &mut Header)
 unsafe fn write_zone_header_pair(zone: &Zone, header: &Header) {
     let base = zone.base;
     base.write(zone.next);
-    base.byte_add(1).write(header.fields);
+    base.add(1).write(header.fields);
 }
 
 impl Kalloc {
-    fn new(start: Page) -> Self {
+    pub fn new(start: Page) -> Self {
         // Make sure start of allocation pool is page aligned.
         assert_eq!(start.addr.addr() & (PAGE_SIZE - 1), 0);
         // New page is the first zone in the Kalloc pool.
