@@ -1,7 +1,7 @@
 use core::mem::size_of;
 
 use crate::hw::param::PAGE_SIZE;
-use super::palloc::Page;
+use super::{palloc::Page, palloc, pfree, VmError};
 
 const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 = 4088.
 const HEADER_SIZE: usize = size_of::<Header>();
@@ -15,7 +15,7 @@ const HEADER_USED: usize = 1 << 12; // Chunk is in use flag.
 // Bits 0-11 are size (2^0 - (2^12 - 1))
 // Bit 12 is Used.
 //
-// Header:
+// Header.fields:
 // ┌────────────────────────────────────┬─┬──────────────┐
 // │    Unused / Reserved               │U│ Chunk Size   │
 // └────────────────────────────────────┴─┴──────────────┘
@@ -183,9 +183,45 @@ impl Zone {
         }
     }
 
-    fn next_zone(&self) -> Result<Zone, KallocError> {
-        let next_addr = self.get_next()?;
-        Ok(Zone::from(next_addr as *mut usize))
+    fn next_zone(&self) -> Option<Zone> {
+        match self.get_next() {
+            Ok(addr) => Some(Zone::from(addr as *mut usize)),
+            Err(_) => None,
+        }
+    }
+
+    // Scan this zone for a free chunk of the right size.
+    // First 8 bytes of a zone is the Zone.next field.
+    // Second 8 bytes is the first header of the zone.
+    fn scan(&mut self, size: usize) -> Option<*mut usize> {
+        // If size is less than min alloc size (8 bytes), pad.
+        let size = if size < 8 { 8 } else { size };
+        // Start and end (start + PAGE_SIZE) bounds of zone.
+        let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
+        // Get the first header in the zone.
+        let head = unsafe { Header::from(curr) };
+
+        while curr < end {
+            let chunk_size = head.chunk_size();
+            if chunk_size < size || !head.is_free() {
+                curr = curr.map_addr(|addr| addr + HEADER_SIZE + chunk_size);
+                head = Header::from(curr);
+            } else {
+                alloc_chunk(size, curr, self, &mut head);
+                return Some(curr.map_addr(|addr| addr + HEADER_SIZE))
+            }
+        }
+        None
+    }
+}
+
+fn alloc_chunk(size: usize, ptr: *mut usize, zone: &mut Zone, head: &mut Header) {
+    zone.increment_refs().expect("Maximum zone allocation limit exceeded.");
+    head.set_used();
+
+    if size != head.chunk_size() {
+        let (_, _) = head.split(size, ptr);
+        //next.write_to(next_addr);
     }
 }
 
@@ -209,28 +245,45 @@ impl Kalloc {
         }
     }
 
-    pub fn alloc(&mut self, mut size: usize) -> Result<*mut usize, KallocError> {
-        // Start tracks address of each header.
-        let mut start = self.head;
-        let mut head = Header::from(start);
-        size = if size < 8 {8} else {size};
+    fn grow_pool(&mut self, tail: Zone) -> Result<(Zone, Header), VmError> {
+        let page = palloc()?;
+        unsafe { tail.write_next(page.addr); }
+        let zone = Zone::new(page.addr);
+        let head = Header::new(MAX_CHUNK_SIZE);
+        unsafe { write_zone_header_pair(zone, head); }
+        Ok((zone, head))
+    }
 
-        // Remove redundancy + use some helper fns.
-        while start != self.end {
-            let chunk_size = head.chunk_size();
-            if chunk_size < size || !head.is_free() {
-                start = start.map_addr(|addr| addr + HEADER_SIZE + chunk_size);
-                head = Header::from(start);
+    /// Finds the first fit for the requested size.
+    /// 1. Scan first zone from first to last for a free chunk that fits.
+    /// 2a. If success: Return chunk's starting address (*mut usize).
+    /// 2b. Else, move to next zone and go back to step 1.
+    /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
+    /// 4. If success, go to step 2a. Else, fail with OOM.
+    pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
+        let mut curr = self.head;
+        let mut zone = Some(Zone::from(curr));
+        let mut trail = zone.unwrap();
+        
+        while let Some(mut next_zone) = zone {
+            if let Some(ptr) = next_zone.scan(size) {
+                return Ok(ptr)
             } else {
-                head.set_used();
-                if size != chunk_size {
-                    let (next, next_addr) = head.split(size, start);
-                    next.write_to(next_addr);
-                }
-                return Ok(start.map_addr(|addr| addr + HEADER_SIZE))
+                trail = zone.unwrap();
+                zone = zone.unwrap().next_zone();
             }
         }
-        Err(KallocError::OOM)
+
+        match self.grow_pool(trail) {
+             Ok((mut zone, mut head)) => {
+                 let ptr = unsafe { zone.base.map_addr(|addr| addr + ZONE_SIZE + HEADER_SIZE) };
+                 alloc_chunk(size, ptr, &mut zone, &mut head);
+                 Ok(ptr)
+             },
+             Err(e) => Err(KallocError::OOM),
+        }
+
+        //Err(KallocError::OOM)
     }
 
     // TODO if you call alloc in order and then free in order this
