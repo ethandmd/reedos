@@ -30,7 +30,7 @@ pub enum VmError {
 pub trait Resource {}
 
 pub struct TaskList {
-    head: Option<Kbox<Process>>, // TODO:Convert to Option<Kbox<Process>>>
+    head: Option<Kbox<Process>>,
 }
 
 pub struct TaskNode {
@@ -45,6 +45,14 @@ pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
 
 pub fn kfree(ptr: *mut usize) {
     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
+}
+
+fn palloc() -> Result<Page, VmError> {
+    unsafe { PAGEPOOL.get_mut().unwrap().palloc() }
+}
+
+fn pfree(page: Page) -> Result<(), VmError> {
+    unsafe { PAGEPOOL.get_mut().unwrap().pfree(page) }
 }
 
 /// Initialize the kernel VM system.
