@@ -1,3 +1,5 @@
+//! Process handle and utilities.
+
 use crate::hw::HartContext;
 use crate::trap::TrapFrame;
 use crate::vm::ptable::PageTable;

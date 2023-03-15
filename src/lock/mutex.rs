@@ -1,8 +1,6 @@
 //! Spinlock mutex implementation
 /// Inspiration taken in no small part from the awesome:
-/// + https://marabos.nl/atomics/building-locks.html#mutex
-/// as well as:
-/// + https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
+/// <https://marabos.nl/atomics/building-locks.html#mutex>
 ///
 /// Opportunity for improvement on interrupt safe locks. 
 use core::cell::UnsafeCell;
@@ -47,7 +45,8 @@ pub struct Mutex<T> {
 unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    /// https://doc.rust-lang.org/reference/const_eval.html
+    /// Reference:
+    /// <https://doc.rust-lang.org/reference/const_eval.html>
     pub const fn new(value: T) -> Self {
         Mutex {
             lock_state: AtomicU32::new(0),

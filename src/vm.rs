@@ -27,23 +27,27 @@ pub enum VmError {
     Koom,
 }
 
+/// Moving to `mod process`
 pub trait Resource {}
 
+/// Moving to `mod <TBD>`
 pub struct TaskList {
     head: Option<Kbox<Process>>,
 }
 
+/// Moving to `mod <TBD>`
 pub struct TaskNode {
     proc: Option<Kbox<Process>>,
     prev: Option<Kbox<TaskNode>>,
     next: Option<Kbox<TaskNode>>,
 }
 
+/// See `vm::vmalloc::Kalloc::alloc`.
 pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
     unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
 }
 
-
+/// See `vm::vmalloc::Kalloc::free`.
 pub fn kfree<T>(ptr: *mut T) {
     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
 }
@@ -60,6 +64,7 @@ fn pfree(page: Page) -> Result<(), VmError> {
 /// First, setup the kernel physical page pool.
 /// We start the pool at the end of the .bss section, and stop at the end of physical memory.
 /// Next, we map physical memory into the kernel's physical memory 1:1.
+/// Next, initialize the kernel virtual memory allocator pool.
 /// Finally we set the global kernel page table `KPGTABLE` variable to point to the
 /// kernel's page table struct.
 pub fn init() -> Result<(), PagePool>{
@@ -96,8 +101,7 @@ pub fn init() -> Result<(), PagePool>{
     Ok(())
 }
 
-
-
+/// A test designed to be used with GDB.
 pub unsafe fn test_palloc() {
     let allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
     //println!("allocd addr: {:?}", allocd.addr);
@@ -106,6 +110,10 @@ pub unsafe fn test_palloc() {
     log!(Debug, "Successful test of page allocation and freeing...");
 }
 
+/// A test that is more insightful when run with GDB.
+/// Likely missing some edge cases like:
+///  + Free the last two chunks in a zone. Ensure you don't
+///  try to merge out of zone bounds.
 pub unsafe fn test_kalloc() {
     use core::mem::size_of;
     use core::ptr::write;
