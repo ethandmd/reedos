@@ -1,3 +1,4 @@
+//! Kernel Virtual Memory Allocator.
 use core::mem::size_of;
 
 use crate::hw::param::PAGE_SIZE;
@@ -43,6 +44,70 @@ struct Zone {
     next: usize,        // Next zone's address + this zone's ref count.
 }
 
+/// Kernel Virtual Memory Allocator.
+/// Kalloc is comprised of `Zones` (physical pages). Each
+/// zone is broken up into smaller chunks as memory is allocated
+/// and merged into larger chunks as memory is deallocated.
+/// Each allocation, `x` , must satisfy `0<= x <= 4080` bytes.
+/// All allocations will be automatically rounded up to be
+/// 8 byte aligned.
+///
+/// A generic zone with the first zone containing 1 in use chunk and
+/// a second full zone with one in use chunk might look like:
+/// ```text
+///           Kalloc {
+/// 
+///    ┌────────start
+///    │
+/// ┌──┼────────end
+/// │  │
+/// │  │      }
+/// │  │
+/// │  │    ┌──────────────────────────────────────┬──────────────┐
+/// │  └─┬──┤►           0x80089e000               │  0x1         │   0x80089d000
+/// │    │  └──────────────────────────────────────┴──────────────┘
+/// │    │  63                                     11             0
+/// │    │  ┌────────────────────────────────────┬─┬──────────────┐
+/// │    │  │            Unused / Reserved       │1│  0x008       │   0x80089d008
+/// │    │  └────────────────────────────────────┴─┴──────────────┘
+/// │    │  63                                  12 11             0
+/// │    │  ┌─────────────────────────────────────────────────────┐
+/// │    │  │            0x8BADF00D                               │   0x80089d010
+/// │    │  └─────────────────────────────────────────────────────┘
+/// │    │  63                                                    0
+/// │    │  ┌────────────────────────────────────┬─┬──────────────┐
+/// │    │  │            Unused / Reserved       │0│  0xfe0       │   0x80089d018
+/// │    │  └────────────────────────────────────┴─┴──────────────┘
+/// │    │  63                                  12 11             0
+/// │    │
+/// │    │
+/// │    │                             ...
+/// │    │
+/// │    │  ┌──────────────────────────────────────┬──────────────┐
+/// │    └──►           0x0                        │  0x1         │   0x80089e000
+/// │       └──────────────────────────────────────┴──────────────┘
+/// │       63                                     11             0
+/// │       ┌────────────────────────────────────┬─┬──────────────┐
+/// │       │           Unused / Reserved        │1│  0xff0       │   0x80089e008
+/// │       └────────────────────────────────────┴─┴──────────────┘
+/// │       63                                  12 11             0
+/// │       ┌─────────────────────────────────────────────────────┐
+/// │       │                         0x0                         │   0x80089e010
+/// │       └                                                     ┘
+/// │       63                         │                          0
+/// │                                  │
+/// │                                  │ [usize; 510]
+/// │                                  │
+/// │                                  │
+/// │                                  │
+/// │                                  ▼
+/// │       ┌                                                     │
+/// │       │                        0x1fd                        │   0x80089eff8
+/// │       └─────────────────────────────────────────────────────┘
+/// │       63                                                    0
+/// │
+/// └───────────────────────────────────────────────────────────────► 0x80089d000
+///```
 pub struct Kalloc {
     head: *mut usize, // Address of first zone.
     end: *mut usize,
@@ -268,6 +333,10 @@ unsafe fn write_zone_header_pair(zone: &Zone, header: &Header) {
 }
 
 impl Kalloc {
+    /// The virtual memory kernel allocator requires at least
+    /// one page to use as a `Zone`. On initialization, create
+    /// a new zone and initialize the memory with a zone and
+    /// chunk header.
     pub fn new(start: Page) -> Self {
         // Make sure start of allocation pool is page aligned.
         assert_eq!(start.addr.addr() & (PAGE_SIZE - 1), 0);
@@ -319,7 +388,7 @@ impl Kalloc {
     /// 2a. If success: Return chunk's starting address (*mut usize).
     /// 2b. Else, move to next zone and go back to step 1.
     /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
-    /// 4. If success, go to step 2a. Else, fail with OOM.
+    /// 4. If 3. success, allocate from first chunk in new page. Else, fail with OOM.
     pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
         if size == 0 { 
             return Err(KallocError::Void); 
@@ -357,9 +426,10 @@ impl Kalloc {
         Err(KallocError::OOM)
     }
 
-    // TODO if you call alloc in order and then free in order this
-    // doesn't merge, as you can't merge backwards. Consider a merging
-    // pass when allocting.
+    /// 1. Calculate the header offset from the data pointer.
+    /// 2. Calculate the zone offset from the data pointer.
+    /// 3. Check if zone refs count is 0, if so, release zone.
+    /// 4. If zone refs count != 0, try to merge this freed chunk.
     pub fn free<T>(&mut self, ptr: *mut T) {
         let ptr: *mut usize = ptr.cast();
         // Assume that round down to nearest page is the current zone base addr.
@@ -385,7 +455,7 @@ impl Kalloc {
         if chunk_merge_flag {
             let next_ptr = ptr.map_addr(|addr| addr + head.chunk_size());
             let next = Header::from(next_ptr);
-            if next.is_free() {
+            if next.is_free() && next_ptr < zone.base.map_addr(|addr| addr + 0x1000) {
                 // back to back free, merge
                 //head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
                 head.merge(next, next_ptr);
