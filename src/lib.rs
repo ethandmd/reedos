@@ -111,6 +111,8 @@ fn main() -> ! {
         unsafe {
             vm::test_palloc();
         }
+        log!(Debug, "Testing kalloc and kfree...");
+        vm::test_kalloc();
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

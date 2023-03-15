@@ -43,7 +43,7 @@ pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
     unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
 }
 
-pub fn kfree(ptr: *mut usize) {
+pub fn kfree<T>(ptr: *mut T) {
     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
 }
 
@@ -72,7 +72,18 @@ pub fn init() -> Result<(), PagePool>{
     }
     log!(Debug, "Successfully initialized kernel page pool...");
 
-    // Map text, data, heap into kernel memory
+    unsafe {
+        match palloc() {
+            Ok(page) => {
+                if let Err(_) = VMALLOC.set(vmalloc::Kalloc::new(page)) {
+                    panic!("VMALLOC double init...")
+                }
+            },
+            Err(_) => panic!("Unable to allocate initial zone for vmalloc...")
+        }
+    }
+
+    // Map text, data, stacks, heap into kernel page table.
     match kpage_init() {
         Ok(pt) => {
             pt.write_satp()
@@ -93,3 +104,39 @@ pub unsafe fn test_palloc() {
     let _ = PAGEPOOL.get_mut().unwrap().pfree(allocd);
     log!(Debug, "Successful test of page allocation and freeing...");
 }
+
+pub fn test_kalloc() {
+    use core::mem::size_of;
+    use core::ptr::write;
+    struct Atest {
+        xs: [u64; 4],
+    }
+    impl Atest {
+        fn new() -> Self {
+            let xs = [5; 4];
+            Atest { xs }
+        }
+    }
+    let addr1 = kalloc(8).expect("Could not allocate addr1...");
+    unsafe { addr1.write(0xdeadbeaf); }
+    
+    let addr2: *mut [u64; 2] = kalloc(16).expect("Could not allocate addr3...").cast();
+    unsafe { write(addr2, [0x8BADF00D, 0xBAADF00D]) };
+    
+    let t = Atest::new();
+    let addr3: *mut Atest = kalloc(size_of::<Atest>()).expect("Could not allocate addr3...").cast();
+    unsafe { write(addr3, t); }
+    
+    kfree(addr1);
+    kfree(addr2);
+    kfree(addr3);
+
+    let addr4 = kalloc(0xfc0).expect("Could not allocate addr4...");
+    kfree(addr4);
+}
+
+
+
+
+
+

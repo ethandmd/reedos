@@ -74,7 +74,7 @@ impl Header {
     }
 
     fn is_free(&self) -> bool {
-        self.fields & !HEADER_USED == 0
+        self.fields & HEADER_USED == 0
     }
 
     fn set_used(&mut self) {
@@ -93,7 +93,7 @@ impl Header {
     // Unsafe write header data to memory at dest.
     fn write_to(&self, dest: *mut usize) {
         unsafe {
-            dest.write_volatile(self.fields);
+            dest.write(self.fields);
         }
     }
 
@@ -102,6 +102,7 @@ impl Header {
         let old_size = self.chunk_size();
         let next_size = old_size - new_size;
         self.set_size(new_size);
+        self.write_to(cur_addr);
         let next_addr = cur_addr.map_addr(|addr| addr + HEADER_SIZE + new_size);
         let next_header = Header { fields: next_size - HEADER_SIZE }; // make space for inserted header
         next_header.write_to(next_addr);
@@ -111,8 +112,9 @@ impl Header {
     fn merge(&mut self, next: Self, next_addr: *mut usize) {
         assert!(next.is_free());
         assert!(self.is_free());
-        let size = self.chunk_size() + next.chunk_size();
+        let size = self.chunk_size() + HEADER_SIZE + next.chunk_size();
         self.set_size(size);
+        //self.write_to(addr);
         unsafe { next_addr.write(0); }
     }
 }
@@ -180,7 +182,7 @@ impl Zone {
         }
     }
 
-    fn decrement_refs(&mut self) -> Result<(), KallocError> {
+    fn decrement_refs(&mut self) -> Result<usize, KallocError> {
         // Given a usize can't be < 0, I want to catch that and not cause a panic.
         // This may truly be unnecessary, but just want to be cautious.
         let new_count = self.get_refs() - 1;
@@ -188,7 +190,7 @@ impl Zone {
             Err(KallocError::MinRefs)
         } else {
             unsafe { self.write_refs(new_count); }
-            Ok(())
+            Ok(new_count)
         }
     }
 
@@ -219,7 +221,11 @@ impl Zone {
     // Second 8 bytes is the first header of the zone.
     fn scan(&mut self, size: usize) -> Option<*mut usize> {
         // If size is less than min alloc size (8 bytes), pad.
-        let size = if size < 8 { 8 } else { size };
+        let size = if size % 8 != 0 { 
+            (size + 7) & !7
+        } else { 
+            size 
+        };
         // Start and end (start + PAGE_SIZE) bounds of zone.
         let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
         // Get the first header in the zone.
@@ -235,6 +241,7 @@ impl Zone {
                 // TODO: Is not pretty, make pretty.
                 if prev.is_free() && head.is_free() {
                     prev.merge(head, curr);
+                    prev.write_to(trail);
                     (head, curr) = (prev, trail);
                 }
             } else {
@@ -249,6 +256,7 @@ impl Zone {
 fn alloc_chunk(size: usize, ptr: *mut usize, zone: &mut Zone, head: &mut Header) {
     zone.increment_refs().expect("Maximum zone allocation limit exceeded.");
     head.set_used();
+    head.write_to(ptr);
 
     if size != head.chunk_size() {
         let (_, _) = head.split(size, ptr);
@@ -324,7 +332,8 @@ impl Kalloc {
     // TODO if you call alloc in order and then free in order this
     // doesn't merge, as you can't merge backwards. Consider a merging
     // pass when allocting.
-    pub fn free(&mut self, ptr: *mut usize) {
+    pub fn free<T>(&mut self, ptr: *mut T) {
+        let ptr: *mut usize = ptr.cast();
         // Assume that round down to nearest page is the current zone base addr.
         let mut zone = Zone::from(ptr.map_addr(|addr| addr & !(PAGE_SIZE - 1)));
         let head_ptr = ptr.map_addr(|addr| addr - HEADER_SIZE);
@@ -332,15 +341,20 @@ impl Kalloc {
         assert!(!head.is_free(), "Kalloc double free.");
         head.set_unused();
 
-        if let Err(_) = zone.decrement_refs() {
-            self.shrink_pool(zone);
+        if let Ok(count) = zone.decrement_refs() {
+            if count == 0 {
+                self.shrink_pool(zone);
+            }
+        } else {
+            panic!("Negative zone refs count: {}", zone.get_refs())
         }
         
-        let next = Header::from(head_ptr.map_addr(
-            |addr| addr + HEADER_SIZE + head.chunk_size()));
-        if !(next.is_free()) {
+        let next_ptr = ptr.map_addr(|addr| addr + head.chunk_size());
+        let next = Header::from(next_ptr);
+        if next.is_free() {
             // back to back free, merge
-            head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
+            //head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
+            head.merge(next, next_ptr);
         }
         head.write_to(head_ptr);
     }
