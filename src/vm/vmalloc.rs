@@ -223,13 +223,6 @@ impl Zone {
     // First 8 bytes of a zone is the Zone.next field.
     // Second 8 bytes is the first header of the zone.
     fn scan(&mut self, size: usize) -> Option<*mut usize> {
-        // Round to a 8 byte granularity
-        let size = if size % 8 != 0 {
-            (size + 7) & !7
-        } else {
-            size
-        };
-
         // Start and end (start + PAGE_SIZE) bounds of zone.
         let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
         // Get the first header in the zone.
@@ -328,7 +321,16 @@ impl Kalloc {
     /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
     /// 4. If success, go to step 2a. Else, fail with OOM.
     pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
-        if size == 0 { return Err(KallocError::Void); }
+        if size == 0 { 
+            return Err(KallocError::Void); 
+        }
+        // Round to a 8 byte granularity
+        let size = if size % 8 != 0 {
+            (size + 7) & !7
+        } else {
+            size
+        };
+
         let curr = self.head;
         let end = self.end.map_addr(|addr| addr - 0x1000);
         let mut zone = Zone::from(curr);
