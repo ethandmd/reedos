@@ -119,20 +119,24 @@ pub fn test_kalloc() {
     }
     let addr1 = kalloc(8).expect("Could not allocate addr1...");
     unsafe { addr1.write(0xdeadbeaf); }
-    
+
     let addr2: *mut [u64; 2] = kalloc(16).expect("Could not allocate addr3...").cast();
     unsafe { write(addr2, [0x8BADF00D, 0xBAADF00D]) };
-    
+
     let t = Atest::new();
     let addr3: *mut Atest = kalloc(size_of::<Atest>()).expect("Could not allocate addr3...").cast();
     unsafe { write(addr3, t); }
-    
+
     kfree(addr1);
     kfree(addr2);
     kfree(addr3);
 
     let addr4 = kalloc(0xfc0).expect("Could not allocate addr4...");
+    let addr5 = kalloc(8).expect("Could not allocate addr5...");
+    unsafe {write(addr5, 0xee1f00d);}
+    kfree(addr5);
     kfree(addr4);
+
 }
 
 

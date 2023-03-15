@@ -3,7 +3,7 @@ use core::mem::size_of;
 use crate::hw::param::PAGE_SIZE;
 use super::{palloc::Page, palloc, pfree, VmError};
 
-const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 = 4088.
+const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 - 8 = 4080.
 const HEADER_SIZE: usize = size_of::<Header>();
 const ZONE_SIZE: usize = 8;
 const HEADER_USED: usize = 1 << 12; // Chunk is in use flag.
@@ -119,12 +119,12 @@ impl Header {
     }
 }
 
-// Assumes the first byte of a zone is the zone header.
-// Next byte is the chunk header.
+// Assumes the first usize of a zone is the zone header.
+// Next usize is the chunk header.
 impl From<*mut usize> for Zone {
     fn from(src: *mut usize) -> Self {
-        Zone { 
-            base: src, 
+        Zone {
+            base: src,
             next: unsafe { src.read() }
         }
     }
@@ -150,7 +150,7 @@ impl Zone {
             Ok(next_addr)
         }
     }
-    
+
     // Read the next field to get the next zone address.
     // Discard this zone's refs count.
     // Write base address with next zone address and new refs count.
@@ -174,8 +174,8 @@ impl Zone {
 
     fn increment_refs(&mut self) -> Result<(), KallocError> {
         let new_count = self.get_refs() + 1;
-        if new_count > 510 { 
-            Err(KallocError::MaxRefs) 
+        if new_count > 510 {
+            Err(KallocError::MaxRefs)
         } else {
             unsafe { self.write_refs(new_count); }
             Ok(())
@@ -201,13 +201,15 @@ impl Zone {
             Err(KallocError::NullZone)
         }
     }
-    
+
     // Only call from Kalloc.shrink_pool() to ensure this is not the first
     // zone in the pool.
     fn free_self(&mut self) {
         assert!(self.get_refs() == 0);
+        todo!("Relies on sequential page allocation.");
         let prev_base = unsafe { self.base.byte_sub(0x1000) };
         let mut prev_zone = Zone::from(prev_base);
+        // ^ BUG: not guaranteed sequential
         if let Ok(next_zone) = self.next_zone() {
             unsafe { prev_zone.write_next(next_zone.base); }
         } else {
@@ -220,12 +222,13 @@ impl Zone {
     // First 8 bytes of a zone is the Zone.next field.
     // Second 8 bytes is the first header of the zone.
     fn scan(&mut self, size: usize) -> Option<*mut usize> {
-        // If size is less than min alloc size (8 bytes), pad.
-        let size = if size % 8 != 0 { 
+        // Round to a 8 byte granularity
+        let size = if size % 8 != 0 {
             (size + 7) & !7
-        } else { 
-            size 
+        } else {
+            size
         };
+
         // Start and end (start + PAGE_SIZE) bounds of zone.
         let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
         // Get the first header in the zone.
@@ -310,7 +313,7 @@ impl Kalloc {
         let end = self.end.map_addr(|addr| addr - 0x1000);
         let mut zone = Zone::from(curr);
         let mut trail = zone;
-        
+
         while zone.base <= end {
             if let Some(ptr) = zone.scan(size) {
                 return Ok(ptr)
@@ -348,7 +351,7 @@ impl Kalloc {
         } else {
             panic!("Negative zone refs count: {}", zone.get_refs())
         }
-        
+
         let next_ptr = ptr.map_addr(|addr| addr + head.chunk_size());
         let next = Header::from(next_ptr);
         if next.is_free() {
