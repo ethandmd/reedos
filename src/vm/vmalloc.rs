@@ -54,6 +54,7 @@ pub enum KallocError {
     MinRefs,
     NullZone,
     OOM,
+    Void,
 }
 
 impl From<*mut usize> for Header {
@@ -160,8 +161,8 @@ impl Zone {
             Err(_) => 0x0,
             Ok(ptr) => ptr,
         };
-
-        self.base.write(next_addr | new_count);
+        self.next = next_addr | new_count;
+        self.base.write(self.next);
     }
 
     // Read the current next field to get the refs count.
@@ -194,11 +195,11 @@ impl Zone {
         }
     }
 
-    fn next_zone(&self) -> Result<Zone, KallocError> {
+    fn next_zone(&self) -> Option<Zone> {
         if let Ok(addr) = self.get_next() {
-            Ok(Zone::from(addr as *mut usize))
+            Some(Zone::from(addr as *mut usize))
         } else {
-            Err(KallocError::NullZone)
+            None
         }
     }
 
@@ -210,7 +211,7 @@ impl Zone {
         // let prev_base = unsafe { self.base.byte_sub(0x1000) };
         // let mut prev_zone = Zone::from(prev_base);
         // // ^ BUG: not guaranteed sequential
-        if let Ok(next_zone) = self.next_zone() {
+        if let Some(next_zone) = self.next_zone() {
             unsafe { prev_zone.write_next(next_zone.base); }
         } else {
             unsafe { prev_zone.write_next(0x0 as *mut usize); }
@@ -296,21 +297,28 @@ impl Kalloc {
         Ok((zone, head))
     }
 
-    fn shrink_pool(&self, mut to_free: Zone) {
-        if to_free.base != self.head {
-            let mut curr = Zone::new(self.head);
+    fn shrink_pool(&self, mut drop_zone: Zone) {
+        if drop_zone.base != self.head {
+            let mut curr_ptr = self.head;
+            //let mut curr_zone = Zone::from(curr_ptr);
 
-            while let Ok(next) = curr.next_zone() {
-                if to_free.base == next.base {
-                    // found it
-                    to_free.free_self(curr);
-                    return;
+            loop {
+                let curr_zone = Zone::from(curr_ptr);
+
+                if let Some(next_zone) = curr_zone.next_zone() {
+                    if drop_zone.base == next_zone.base {
+                        drop_zone.free_self(curr_zone);
+                        return;
+                    } else {
+                        curr_ptr = next_zone.base;
+                    }
                 } else {
-                    curr = next;
+                    break;
                 }
             }
-            panic!("Tried to free a zone that wasn't in the list...")
+            panic!("Tried to free zone after: {:?}. Not in the pool...", curr_ptr);
         }
+
     }
 
     /// Finds the first fit for the requested size.
@@ -320,6 +328,7 @@ impl Kalloc {
     /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
     /// 4. If success, go to step 2a. Else, fail with OOM.
     pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
+        if size == 0 { return Err(KallocError::Void); }
         let curr = self.head;
         let end = self.end.map_addr(|addr| addr - 0x1000);
         let mut zone = Zone::from(curr);
@@ -329,18 +338,21 @@ impl Kalloc {
             if let Some(ptr) = zone.scan(size) {
                 return Ok(ptr)
             } else {
-                zone = zone.next_zone()?;
-            }
+                zone = match zone.next_zone() {
+                    Some(zone) => zone,
+                    None => {
+                        if let Ok((mut zone, mut head)) = self.grow_pool(&mut trail) {
+                            let head_ptr = zone.base.map_addr(|addr| addr + ZONE_SIZE);
+                            alloc_chunk(size, head_ptr, &mut zone, &mut head);
+                            return Ok(head_ptr.map_addr(|addr| addr + HEADER_SIZE))
+                        } else {
+                            return Err(KallocError::OOM)
+                        }
+                    }
+                }
+            };
         }
-
-        match self.grow_pool(&mut trail) {
-             Ok((mut zone, mut head)) => {
-                 let ptr = zone.base.map_addr(|addr| addr + ZONE_SIZE + HEADER_SIZE);
-                 alloc_chunk(size, ptr, &mut zone, &mut head);
-                 Ok(ptr)
-             },
-             Err(_) => Err(KallocError::OOM),
-        }
+        Err(KallocError::OOM)
     }
 
     // TODO if you call alloc in order and then free in order this
@@ -355,21 +367,27 @@ impl Kalloc {
         assert!(!head.is_free(), "Kalloc double free.");
         head.set_unused();
 
+        let mut chunk_merge_flag = false;
         if let Ok(count) = zone.decrement_refs() {
             if count == 0 {
                 // this is costly, as it's a list traversal
                 self.shrink_pool(zone);
+            } else {
+                chunk_merge_flag = true;
             }
+
         } else {
             panic!("Negative zone refs count: {}", zone.get_refs())
         }
 
-        let next_ptr = ptr.map_addr(|addr| addr + head.chunk_size());
-        let next = Header::from(next_ptr);
-        if next.is_free() {
-            // back to back free, merge
-            //head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
-            head.merge(next, next_ptr);
+        if chunk_merge_flag {
+            let next_ptr = ptr.map_addr(|addr| addr + head.chunk_size());
+            let next = Header::from(next_ptr);
+            if next.is_free() {
+                // back to back free, merge
+                //head.set_size(head.chunk_size() + HEADER_SIZE + next.chunk_size())
+                head.merge(next, next_ptr);
+            }
         }
         head.write_to(head_ptr);
     }
