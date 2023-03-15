@@ -7,6 +7,7 @@
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
 #![feature(once_cell)]
+#![feature(unsized_fn_params)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 
@@ -109,9 +110,9 @@ fn main() -> ! {
         log!(Debug, "Testing page allocation and freeing...");
         unsafe {
             vm::test_palloc();
+            log!(Debug, "Testing kalloc and kfree...");
+            vm::test_kalloc();
         }
-        log!(Debug, "Testing general subpage allocation...");
-        vm::test_galloc();
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

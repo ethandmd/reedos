@@ -59,7 +59,8 @@ impl PagePool {
         }
 
         let mut pool = self.pool.lock();
-        Ok(pool.free_page(page))
+        pool.free_page(page);
+        Ok(())
     }
 }
 
@@ -120,8 +121,10 @@ impl Page {
     /// Read the prev, next pointers of a page in the free list.
     fn read_free(&mut self) -> (*mut usize, *mut usize) {
         unsafe {
-            (self.addr.read_volatile() as *mut usize,
-            self.addr.add(1).read_volatile() as *mut usize)
+            (
+                self.addr.read_volatile() as *mut usize,
+                self.addr.add(1).read_volatile() as *mut usize,
+            )
         }
     }
 }
@@ -134,14 +137,14 @@ impl Pool {
         let mut free = Page::new(bottom);
         let mut pa = bottom.map_addr(|addr| addr + chunk_size);
         //let tmp = FreeNode::new(0x0 as *mut usize, pa); // First free page 'prev' == 0x0 => none.
-        free.write_free(0x0 as *mut usize, pa);
+        free.write_free(core::ptr::null_mut::<usize>(), pa);
         let last = top.map_addr(|addr| addr - chunk_size);
         // Init the remainder of the free list.
         while pa < top {
             let prev_pa = pa.map_addr(|addr| addr - chunk_size);
 
             let next_pa = if pa == last {
-                0x0 as *mut usize
+                core::ptr::null_mut::<usize>()
             } else {
                 pa.map_addr(|addr| addr + chunk_size)
             };
@@ -164,7 +167,7 @@ impl Pool {
     // in order to trigger the OutOfPages error.
     fn alloc_page(&mut self, mut page: Page) -> Page {
         let (prev, next) = page.read_free(); // prev is always 0x0
-        assert_eq!(prev, 0x0 as *mut usize);
+        assert_eq!(prev, core::ptr::null_mut::<usize>());
 
         if next.addr() == 0x0 {
             self.free = None;
@@ -179,7 +182,7 @@ impl Pool {
     }
 
     fn free_page(&mut self, mut page: Page) {
-        let (head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
+        let (head_prev, mut head_next) = (core::ptr::null_mut::<usize>(), core::ptr::null_mut::<usize>());
         let addr = page.addr;
         page.zero();
 

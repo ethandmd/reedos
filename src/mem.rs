@@ -1,7 +1,7 @@
 //! Kernel memory utilities
 use core::ops::{Deref, DerefMut};
-use core::mem::size_of;
-use crate::vm::{galloc, gdealloc};
+use core::mem::size_of_val;
+use crate::vm::{kalloc, kfree};
 
 /// Kernel heap allocated pointer. No guarantees on unique ownership
 /// or concurrent access.
@@ -11,16 +11,27 @@ pub struct Kbox<T: ?Sized> {
 }
 
 impl<T> Kbox<T> {
+    /// Note that as this exists currently, data is passed by value
+    /// into new, which means that the initial contents of a box MUST
+    /// be composed on the stack and passed here to be copied into the
+    /// heap. Kbox contents will not change size during their
+    /// lifetime, so it must soak up as much stack space as it will
+    /// ever use.
+    ///
+    /// Also this may entail a stack->stack copy into this callee's
+    /// stack fram, I am not sure. It might be optimized as a pass by
+    /// reference with the compiler knowledge that it is a move under
+    /// the hood, but I really can't say.
     pub fn new(data: T) -> Self {
         // How the allocater interface should be made use of.
         // Current constraints on allocator mean size_of::<T>() must be less than 4Kb
-        let size = size_of::<T>();
-        match galloc(size)  {
+        let size = size_of_val::<T>(&data);
+        match kalloc(size)  {
             Err(e) => {
                 panic!("Kbox can't allocate: {:?}", e)
             },
             Ok(ptr) => {
-                let new_ptr = ptr as *mut T;
+                let new_ptr: *mut T = ptr.cast();
                 unsafe {
                     *new_ptr = data; // <-- initialize newly allocated memory with our inner value.
                     Self {
@@ -57,6 +68,6 @@ impl<T> DerefMut for Kbox<T> {
 
 impl<T: ?Sized> Drop for Kbox<T> {
     fn drop(&mut self) {
-        gdealloc(self.inner as *mut usize, self.size);
+        kfree(self.inner as *mut usize);
     }
 }

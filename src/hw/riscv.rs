@@ -221,7 +221,7 @@ pub fn read_pmpcfg0() -> usize {
 }
 
 /// Just for curiosity's sake:
-/// https://github.com/rust-lang/rust/issues/82753
+/// <https://github.com/rust-lang/rust/issues/82753>
 /// tp := thread pointer register.
 /// This way we can query a hart's hartid and store it in tp reg.
 pub fn write_tp(id: u64) {
