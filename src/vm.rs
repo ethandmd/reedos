@@ -105,7 +105,7 @@ pub unsafe fn test_palloc() {
     log!(Debug, "Successful test of page allocation and freeing...");
 }
 
-pub fn test_kalloc() {
+pub unsafe fn test_kalloc() {
     use core::mem::size_of;
     use core::ptr::write;
     struct Atest {
@@ -118,29 +118,40 @@ pub fn test_kalloc() {
         }
     }
     let addr1 = kalloc(8).expect("Could not allocate addr1...");
-    unsafe { addr1.write(0xdeadbeaf); }
+    assert_eq!(addr1.sub(2).read(), 0x1);       // Check zone refs
+    assert_eq!(addr1.sub(1).read(), 0x1008);    // Check chunk header size + used
+    addr1.write(0xdeadbeaf);
 
     let addr2: *mut [u64; 2] = kalloc(16).expect("Could not allocate addr3...").cast();
-    unsafe { write(addr2, [0x8BADF00D, 0xBAADF00D]) };
+    assert_eq!(addr1.sub(2).read(), 0x2);       // Check zone refs
+    assert_eq!((addr2 as *mut usize).sub(1).read(), 0x1010);    // Check chunk header size + used
+    write(addr2, [0x8BADF00D, 0xBAADF00D]);
 
     let t = Atest::new();
     let addr3: *mut Atest = kalloc(size_of::<Atest>()).expect("Could not allocate addr3...").cast();
-    unsafe { write(addr3, t); }
+    write(addr3, t);
 
     kfree(addr1);
     kfree(addr2);
     kfree(addr3);
+    assert_eq!(addr1.sub(2).read(), 0x0);       // Check zone refs
+    assert_eq!((addr2 as *mut usize).sub(1).read(), 0x10);      // Check chunk header size + used
 
     let addr4 = kalloc(0xfc0).expect("Could not allocate addr4...");
     let addr5 = kalloc(8).expect("Could not allocate addr5...");
-    unsafe {write(addr5, 0xee1f00d);}
+    write(addr5, 0xee1f00d);
     kfree(addr5);
     kfree(addr4);
 
+    let addr6: *mut [u64;510] = kalloc(0xff0).expect("Could not allocate addr6 (remainder of page)...").cast();
+    // Don't do this: Will stack overflow.
+    // Foreboding for Kbox::new() correctness.
+    // let big_xs = [555; 510];
+    // unsafe { write(addr6, big_xs); }
+
+    let addr7 = kalloc(8).expect("Could not allocate addr7...");
+    kfree(addr6);
+    kfree(addr7);
+
+    log!(Debug, "Successful test of kalloc and kfree...");
 }
-
-
-
-
-
-
