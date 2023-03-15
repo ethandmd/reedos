@@ -81,7 +81,7 @@ pub fn init() -> Result<(), PagePool> {
     unsafe {
         match palloc() {
             Ok(page) => {
-                if let Err(_) = VMALLOC.set(vmalloc::Kalloc::new(page)) {
+                if VMALLOC.set(vmalloc::Kalloc::new(page)).is_err() {
                     panic!("VMALLOC double init...")
                 }
             }

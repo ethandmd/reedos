@@ -144,11 +144,11 @@ impl Header {
     }
 
     fn set_used(&mut self) {
-        self.fields = self.fields | HEADER_USED;
+        self.fields |= HEADER_USED;
     }
 
     fn set_unused(&mut self) {
-        self.fields = self.fields & !HEADER_USED;
+        self.fields &= !HEADER_USED;
     }
 
     // Clear size bits. Set size bits to size.
@@ -223,10 +223,7 @@ impl Zone {
     // Write base address with next zone address and new refs count.
     #[inline(always)]
     unsafe fn write_refs(&mut self, new_count: usize) {
-        let next_addr = match self.get_next() {
-            Err(_) => 0x0,
-            Ok(ptr) => ptr,
-        };
+        let next_addr = self.get_next().unwrap_or(0x0);
         self.next = next_addr | new_count;
         self.base.write(self.next);
     }
@@ -287,7 +284,7 @@ impl Zone {
             }
         } else {
             unsafe {
-                prev_zone.write_next(0x0 as *mut usize);
+                prev_zone.write_next(core::ptr::null_mut::<usize>());
             }
         }
         let _ = pfree(Page::from(self.base));

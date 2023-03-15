@@ -111,7 +111,7 @@ impl PageTable {
 // Returns Either PTE or None, callers responsibility to use PTE
 // or allocate a new page.
 unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut PTEntry, VmError> {
-    let mut table = pt.clone();
+    let mut table = pt;
     assert!(va.addr() < VA_TOP);
     for level in (1..3).rev() {
         let idx = vpn(va, level);
@@ -193,54 +193,46 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         base: base.addr as *mut usize,
     };
 
-    if let Err(uart_map) = page_map(
+    page_map(
         kpage_table,
         UART_BASE as *mut usize,
         UART_BASE as *mut usize,
         PAGE_SIZE,
         PTE_READ | PTE_WRITE,
-    ) {
-        return Err(uart_map);
-    }
+    )?;
     log!(Debug, "Successfully mapped UART into kernel pgtable...");
 
-    if let Err(kernel_text) = page_map(
+    page_map(
         kpage_table,
         DRAM_BASE,
         DRAM_BASE as *mut usize,
         text_end().addr() - DRAM_BASE.addr(),
         PTE_READ | PTE_EXEC,
-    ) {
-        return Err(kernel_text);
-    }
+    )?;
     log!(
         Debug,
         "Succesfully mapped kernel text into kernel pgtable..."
     );
 
-    if let Err(kernel_rodata) = page_map(
+    page_map(
         kpage_table,
         text_end(),
         text_end() as *mut usize,
         rodata_end().addr() - text_end().addr(),
         PTE_READ,
-    ) {
-        return Err(kernel_rodata);
-    }
+    )?;
     log!(
         Debug,
         "Succesfully mapped kernel rodata into kernel pgtable..."
     );
 
-    if let Err(kernel_data) = page_map(
+    page_map(
         kpage_table,
         rodata_end(),
         rodata_end() as *mut usize,
         data_end().addr() - rodata_end().addr(),
         PTE_READ | PTE_WRITE,
-    ) {
-        return Err(kernel_data);
-    }
+    )?;
     log!(
         Debug,
         "Succesfully mapped kernel data into kernel pgtable..."
@@ -251,15 +243,13 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
     let base = stacks_start();
     for s in 0..NHART {
         let stack = unsafe { base.byte_add(PAGE_SIZE * (1 + s * 3)) };
-        if let Err(kernel_stack) = page_map(
+        page_map(
             kpage_table,
             stack,
             stack,
             PAGE_SIZE * 2,
             PTE_READ | PTE_WRITE,
-        ) {
-            return Err(kernel_stack);
-        }
+        )?;
         log!(
             Debug,
             "Succesfully mapped kernel stack {} into kernel pgtable...",
@@ -273,26 +263,22 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
     for i in 0..NHART {
         let m_intstack = unsafe { base.byte_add(PAGE_SIZE * (1 + i * 4)) };
         // Map hart i m-mode handler.
-        if let Err(intstack_m) = page_map(
+        page_map(
             kpage_table,
             m_intstack,
             m_intstack,
             PAGE_SIZE,
             PTE_READ | PTE_WRITE,
-        ) {
-            return Err(intstack_m);
-        }
+        )?;
         // Map hart i s-mode handler
         let s_intstack = unsafe { m_intstack.byte_add(PAGE_SIZE * 2) };
-        if let Err(intstack_s) = page_map(
+        page_map(
             kpage_table,
             s_intstack,
             s_intstack,
             PAGE_SIZE,
             PTE_READ | PTE_WRITE,
-        ) {
-            return Err(intstack_s);
-        }
+        )?;
         log!(
             Debug,
             "Succesfully mapped interrupt stack for hart {} into kernel pgtable...",
@@ -300,26 +286,22 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         );
     }
 
-    if let Err(bss_map) = page_map(
+    page_map(
         kpage_table,
         bss_start(),
         bss_start(),
         bss_end().addr() - bss_start().addr(),
         PTE_READ | PTE_WRITE,
-    ) {
-        return Err(bss_map);
-    }
+    )?;
     log!(Debug, "Succesfully mapped kernel bss...");
 
-    if let Err(heap_map) = page_map(
+    page_map(
         kpage_table,
         bss_end(),
         bss_end(),
         dram_end().addr() - bss_end().addr(),
         PTE_READ | PTE_WRITE,
-    ) {
-        return Err(heap_map);
-    }
+    )?;
     log!(Debug, "Succesfully mapped kernel heap...");
 
     Ok(kpage_table)
