@@ -204,12 +204,12 @@ impl Zone {
 
     // Only call from Kalloc.shrink_pool() to ensure this is not the first
     // zone in the pool.
-    fn free_self(&mut self) {
+    fn free_self(&mut self, mut prev_zone: Zone) {
         assert!(self.get_refs() == 0);
-        todo!("Relies on sequential page allocation.");
-        let prev_base = unsafe { self.base.byte_sub(0x1000) };
-        let mut prev_zone = Zone::from(prev_base);
-        // ^ BUG: not guaranteed sequential
+        // todo!("Relies on sequential page allocation.");
+        // let prev_base = unsafe { self.base.byte_sub(0x1000) };
+        // let mut prev_zone = Zone::from(prev_base);
+        // // ^ BUG: not guaranteed sequential
         if let Ok(next_zone) = self.next_zone() {
             unsafe { prev_zone.write_next(next_zone.base); }
         } else {
@@ -296,9 +296,20 @@ impl Kalloc {
         Ok((zone, head))
     }
 
-    fn shrink_pool(&self, mut zone: Zone) {
-        if zone.base != self.head {
-            zone.free_self();
+    fn shrink_pool(&self, mut to_free: Zone) {
+        if to_free.base != self.head {
+            let mut curr = Zone::new(self.head);
+
+            while let Ok(next) = curr.next_zone() {
+                if to_free.base == next.base {
+                    // found it
+                    to_free.free_self(curr);
+                    return;
+                } else {
+                    curr = next;
+                }
+            }
+            panic!("Tried to free a zone that wasn't in the list...")
         }
     }
 
@@ -346,6 +357,7 @@ impl Kalloc {
 
         if let Ok(count) = zone.decrement_refs() {
             if count == 0 {
+                // this is costly, as it's a list traversal
                 self.shrink_pool(zone);
             }
         } else {
