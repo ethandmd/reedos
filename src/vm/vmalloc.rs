@@ -1,8 +1,8 @@
 //! Kernel Virtual Memory Allocator.
 use core::mem::size_of;
 
+use super::{palloc, palloc::Page, pfree, VmError};
 use crate::hw::param::PAGE_SIZE;
-use super::{palloc::Page, palloc, pfree, VmError};
 
 const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 - 8 = 4080.
 const HEADER_SIZE: usize = size_of::<Header>();
@@ -40,8 +40,8 @@ struct Header {
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct Zone {
-    base: *mut usize,   // This zone's address.
-    next: usize,        // Next zone's address + this zone's ref count.
+    base: *mut usize, // This zone's address.
+    next: usize,      // Next zone's address + this zone's ref count.
 }
 
 /// Kernel Virtual Memory Allocator.
@@ -56,26 +56,26 @@ struct Zone {
 /// a second full zone with one in use chunk might look like:
 /// ```text
 ///           Kalloc {
-/// 
+///
 ///    ┌────────start
 ///    │
 /// ┌──┼────────end
 /// │  │
 /// │  │      }
 /// │  │
-/// │  │    ┌──────────────────────────────────────┬──────────────┐
+/// │  │    ┌──────────────────────────────────────┬──────────────┐  (zone header)
 /// │  └─┬──┤►           0x80089e000               │  0x1         │   0x80089d000
 /// │    │  └──────────────────────────────────────┴──────────────┘
 /// │    │  63                                     11             0
-/// │    │  ┌────────────────────────────────────┬─┬──────────────┐
+/// │    │  ┌────────────────────────────────────┬─┬──────────────┐  (chunk header)
 /// │    │  │            Unused / Reserved       │1│  0x008       │   0x80089d008
 /// │    │  └────────────────────────────────────┴─┴──────────────┘
 /// │    │  63                                  12 11             0
-/// │    │  ┌─────────────────────────────────────────────────────┐
+/// │    │  ┌─────────────────────────────────────────────────────┐     (data)
 /// │    │  │            0x8BADF00D                               │   0x80089d010
 /// │    │  └─────────────────────────────────────────────────────┘
 /// │    │  63                                                    0
-/// │    │  ┌────────────────────────────────────┬─┬──────────────┐
+/// │    │  ┌────────────────────────────────────┬─┬──────────────┐  (chunk header)
 /// │    │  │            Unused / Reserved       │0│  0xfe0       │   0x80089d018
 /// │    │  └────────────────────────────────────┴─┴──────────────┘
 /// │    │  63                                  12 11             0
@@ -83,15 +83,15 @@ struct Zone {
 /// │    │
 /// │    │                             ...
 /// │    │
-/// │    │  ┌──────────────────────────────────────┬──────────────┐
+/// │    │  ┌──────────────────────────────────────┬──────────────┐  (zone header)
 /// │    └──►           0x0                        │  0x1         │   0x80089e000
 /// │       └──────────────────────────────────────┴──────────────┘
 /// │       63                                     11             0
-/// │       ┌────────────────────────────────────┬─┬──────────────┐
+/// │       ┌────────────────────────────────────┬─┬──────────────┐  (chunk header)
 /// │       │           Unused / Reserved        │1│  0xff0       │   0x80089e008
 /// │       └────────────────────────────────────┴─┴──────────────┘
 /// │       63                                  12 11             0
-/// │       ┌─────────────────────────────────────────────────────┐
+/// │       ┌─────────────────────────────────────────────────────┐     (data)
 /// │       │                         0x0                         │   0x80089e010
 /// │       └                                                     ┘
 /// │       63                         │                          0
@@ -101,11 +101,11 @@ struct Zone {
 /// │                                  │
 /// │                                  │
 /// │                                  ▼
-/// │       ┌                                                     │
+/// │       ┌                                                     │     (data)
 /// │       │                        0x1fd                        │   0x80089eff8
 /// │       └─────────────────────────────────────────────────────┘
 /// │       63                                                    0
-/// │
+/// │                                                                (end of pool)
 /// └───────────────────────────────────────────────────────────────► 0x80089d000
 ///```
 pub struct Kalloc {
@@ -170,7 +170,9 @@ impl Header {
         self.set_size(new_size);
         self.write_to(cur_addr);
         let next_addr = cur_addr.map_addr(|addr| addr + HEADER_SIZE + new_size);
-        let next_header = Header { fields: next_size - HEADER_SIZE }; // make space for inserted header
+        let next_header = Header {
+            fields: next_size - HEADER_SIZE,
+        }; // make space for inserted header
         next_header.write_to(next_addr);
         (next_header, next_addr)
     }
@@ -181,7 +183,9 @@ impl Header {
         let size = self.chunk_size() + HEADER_SIZE + next.chunk_size();
         self.set_size(size);
         //self.write_to(addr);
-        unsafe { next_addr.write(0); }
+        unsafe {
+            next_addr.write(0);
+        }
     }
 }
 
@@ -191,17 +195,14 @@ impl From<*mut usize> for Zone {
     fn from(src: *mut usize) -> Self {
         Zone {
             base: src,
-            next: unsafe { src.read() }
+            next: unsafe { src.read() },
         }
     }
 }
 
 impl Zone {
     fn new(base: *mut usize) -> Self {
-        Zone {
-            base,
-            next: 0x0,
-        }
+        Zone { base, next: 0x0 }
     }
 
     fn get_refs(&self) -> usize {
@@ -243,7 +244,9 @@ impl Zone {
         if new_count > 510 {
             Err(KallocError::MaxRefs)
         } else {
-            unsafe { self.write_refs(new_count); }
+            unsafe {
+                self.write_refs(new_count);
+            }
             Ok(())
         }
     }
@@ -255,7 +258,9 @@ impl Zone {
         if (new_count as isize) < 0 {
             Err(KallocError::MinRefs)
         } else {
-            unsafe { self.write_refs(new_count); }
+            unsafe {
+                self.write_refs(new_count);
+            }
             Ok(new_count)
         }
     }
@@ -277,9 +282,13 @@ impl Zone {
         // let mut prev_zone = Zone::from(prev_base);
         // // ^ BUG: not guaranteed sequential
         if let Some(next_zone) = self.next_zone() {
-            unsafe { prev_zone.write_next(next_zone.base); }
+            unsafe {
+                prev_zone.write_next(next_zone.base);
+            }
         } else {
-            unsafe { prev_zone.write_next(0x0 as *mut usize); }
+            unsafe {
+                prev_zone.write_next(0x0 as *mut usize);
+            }
         }
         let _ = pfree(Page::from(self.base));
     }
@@ -289,7 +298,7 @@ impl Zone {
     // Second 8 bytes is the first header of the zone.
     fn scan(&mut self, size: usize) -> Option<*mut usize> {
         // Start and end (start + PAGE_SIZE) bounds of zone.
-        let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE/8)) };
+        let (mut curr, end) = unsafe { (self.base.add(1), self.base.add(PAGE_SIZE / 8)) };
         // Get the first header in the zone.
         let mut head = Header::from(curr);
 
@@ -308,7 +317,7 @@ impl Zone {
                 }
             } else {
                 alloc_chunk(size, curr, self, &mut head);
-                return Some(curr.map_addr(|addr| addr + HEADER_SIZE))
+                return Some(curr.map_addr(|addr| addr + HEADER_SIZE));
             }
         }
         None
@@ -316,7 +325,8 @@ impl Zone {
 }
 
 fn alloc_chunk(size: usize, ptr: *mut usize, zone: &mut Zone, head: &mut Header) {
-    zone.increment_refs().expect("Maximum zone allocation limit exceeded.");
+    zone.increment_refs()
+        .expect("Maximum zone allocation limit exceeded.");
     head.set_used();
     head.write_to(ptr);
 
@@ -343,7 +353,9 @@ impl Kalloc {
         // New page is the first zone in the Kalloc pool.
         let zone = Zone::new(start.addr);
         let head = Header::new(MAX_CHUNK_SIZE);
-        unsafe { write_zone_header_pair(&zone, &head); }
+        unsafe {
+            write_zone_header_pair(&zone, &head);
+        }
         Kalloc {
             head: start.addr,
             end: start.addr.map_addr(|addr| addr + 0x1000),
@@ -352,10 +364,14 @@ impl Kalloc {
 
     fn grow_pool(&self, tail: &mut Zone) -> Result<(Zone, Header), VmError> {
         let page = palloc()?;
-        unsafe { tail.write_next(page.addr); }
+        unsafe {
+            tail.write_next(page.addr);
+        }
         let zone = Zone::new(page.addr);
         let head = Header::new(MAX_CHUNK_SIZE);
-        unsafe { write_zone_header_pair(&zone, &head); }
+        unsafe {
+            write_zone_header_pair(&zone, &head);
+        }
         Ok((zone, head))
     }
 
@@ -378,9 +394,11 @@ impl Kalloc {
                     break;
                 }
             }
-            panic!("Tried to free zone after: {:?}. Not in the pool...", curr_ptr);
+            panic!(
+                "Tried to free zone after: {:?}. Not in the pool...",
+                curr_ptr
+            );
         }
-
     }
 
     /// Finds the first fit for the requested size.
@@ -390,15 +408,11 @@ impl Kalloc {
     /// 3. If no zone had a fit, then try to allocate a new zone (palloc()).
     /// 4. If 3. success, allocate from first chunk in new page. Else, fail with OOM.
     pub fn alloc(&mut self, size: usize) -> Result<*mut usize, KallocError> {
-        if size == 0 { 
-            return Err(KallocError::Void); 
+        if size == 0 {
+            return Err(KallocError::Void);
         }
         // Round to a 8 byte granularity
-        let size = if size % 8 != 0 {
-            (size + 7) & !7
-        } else {
-            size
-        };
+        let size = if size % 8 != 0 { (size + 7) & !7 } else { size };
 
         let curr = self.head;
         let end = self.end.map_addr(|addr| addr - 0x1000);
@@ -407,7 +421,7 @@ impl Kalloc {
 
         while zone.base <= end {
             if let Some(ptr) = zone.scan(size) {
-                return Ok(ptr)
+                return Ok(ptr);
             } else {
                 zone = match zone.next_zone() {
                     Some(zone) => zone,
@@ -415,9 +429,9 @@ impl Kalloc {
                         if let Ok((mut zone, mut head)) = self.grow_pool(&mut trail) {
                             let head_ptr = zone.base.map_addr(|addr| addr + ZONE_SIZE);
                             alloc_chunk(size, head_ptr, &mut zone, &mut head);
-                            return Ok(head_ptr.map_addr(|addr| addr + HEADER_SIZE))
+                            return Ok(head_ptr.map_addr(|addr| addr + HEADER_SIZE));
                         } else {
-                            return Err(KallocError::OOM)
+                            return Err(KallocError::OOM);
                         }
                     }
                 }
@@ -447,7 +461,6 @@ impl Kalloc {
             } else {
                 chunk_merge_flag = true;
             }
-
         } else {
             panic!("Negative zone refs count: {}", zone.get_refs())
         }

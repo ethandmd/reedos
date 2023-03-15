@@ -120,8 +120,10 @@ impl Page {
     /// Read the prev, next pointers of a page in the free list.
     fn read_free(&mut self) -> (*mut usize, *mut usize) {
         unsafe {
-            (self.addr.read_volatile() as *mut usize,
-            self.addr.add(1).read_volatile() as *mut usize)
+            (
+                self.addr.read_volatile() as *mut usize,
+                self.addr.add(1).read_volatile() as *mut usize,
+            )
         }
     }
 }

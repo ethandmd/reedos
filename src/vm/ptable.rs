@@ -35,7 +35,7 @@ pub struct PageTable {
 }
 
 #[inline(always)]
-fn vpn(ptr: VirtAddress, level: usize) -> usize{
+fn vpn(ptr: VirtAddress, level: usize) -> usize {
     ptr.addr() >> (12 + 9 * level) & 0x1FF
 }
 
@@ -62,7 +62,7 @@ macro_rules! PteSetFlag {
 }
 
 #[inline(always)]
-fn phy_to_satp(ptr: PhysAddress) -> usize{
+fn phy_to_satp(ptr: PhysAddress) -> usize {
     (1 << 63) | (ptr.addr() >> 12)
 }
 
@@ -120,10 +120,7 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
             true => PageTable::from(*next),
             false => {
                 if alloc_new {
-                    match PAGEPOOL
-                        .get_mut()
-                        .unwrap()
-                        .palloc() {
+                    match PAGEPOOL.get_mut().unwrap().palloc() {
                         Ok(pg) => {
                             *next = PteSetFlag!(phy_to_pte(pg.addr), PTE_VALID);
                             PageTable::from(phy_to_pte(pg.addr))
@@ -269,7 +266,7 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
             s
         );
     }
-    
+
     // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
     // problem.
     let base = intstacks_start();
@@ -281,9 +278,9 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
             m_intstack,
             m_intstack,
             PAGE_SIZE,
-            PTE_READ | PTE_WRITE
+            PTE_READ | PTE_WRITE,
         ) {
-            return Err(intstack_m)
+            return Err(intstack_m);
         }
         // Map hart i s-mode handler
         let s_intstack = unsafe { m_intstack.byte_add(PAGE_SIZE * 2) };
@@ -292,16 +289,15 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
             s_intstack,
             s_intstack,
             PAGE_SIZE,
-            PTE_READ | PTE_WRITE
+            PTE_READ | PTE_WRITE,
         ) {
-            return Err(intstack_s)
+            return Err(intstack_s);
         }
         log!(
             Debug,
             "Succesfully mapped interrupt stack for hart {} into kernel pgtable...",
             i
         );
-
     }
 
     if let Err(bss_map) = page_map(

@@ -1,11 +1,11 @@
 //! Process handle and utilities.
 
+use crate::collection::BalBst;
 use crate::hw::HartContext;
+use crate::mem::Kbox;
 use crate::trap::TrapFrame;
 use crate::vm::ptable::PageTable;
 use crate::vm::Resource;
-use crate::collection::BalBst;
-use crate::mem::Kbox;
 
 pub struct Process {
     id: usize,
