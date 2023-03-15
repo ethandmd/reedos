@@ -2,7 +2,6 @@
 pub mod palloc;
 pub mod ptable;
 pub mod process;
-pub mod galloc;
 pub mod vmalloc;
 
 use crate::hw::param::*;
