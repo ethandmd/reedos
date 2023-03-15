@@ -8,12 +8,13 @@ use crate::hw::param::*;
 use crate::mem::Kbox;
 use palloc::*;
 use ptable::kpage_init; //, PageTable};
+use vmalloc::Kalloc;
 use process::Process;
 use core::cell::OnceCell;
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
-static mut VMALLOC: OnceCell<vmalloc::Kalloc> = OnceCell::new();
+static mut VMALLOC: OnceCell<Kalloc> = OnceCell::new();
 
 /// (Still growing) list of kernel VM system error cases.
 #[derive(Debug)]
@@ -41,6 +42,7 @@ pub struct TaskNode {
 pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
     unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
 }
+
 
 pub fn kfree<T>(ptr: *mut T) {
     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
@@ -148,7 +150,7 @@ pub unsafe fn test_kalloc() {
     // let big_xs = [555; 510];
     // unsafe { write(addr6, big_xs); }
 
-    let addr7 = kalloc(8).expect("Could not allocate addr7...");
+    let addr7 = kalloc(9).expect("Could not allocate addr7...");
     kfree(addr6);
     kfree(addr7);
 
