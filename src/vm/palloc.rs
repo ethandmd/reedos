@@ -66,7 +66,7 @@ impl PagePool {
         Ok(())
     }
 
-    pub fn palloc_plural(&mut self, num_pages: usize) -> Result<Page, VmError> {
+    pub fn palloc_plural(&mut self, num_pages: usize) -> Result<*mut usize, VmError> {
         assert!(num_pages != 0, "tried to allocate zero pages");
         let mut pool = self.pool.lock();
         match pool.free {
@@ -74,19 +74,19 @@ impl PagePool {
             Some(page) => match pool.alloc_pages(page, num_pages) {
                 Err(_) => Err(VmError::OutOfPages),
                 // ^ TODO consider partial allocations?
-                Ok(ptr) => Ok(ptr),
+                Ok(ptr) => Ok(ptr.addr),
             },
         }
     }
 
-    pub fn pfree_plural(&mut self, page: Page, num_pages: usize) -> Result<(), VmError> {
+    pub fn pfree_plural(&mut self, page: *mut usize, num_pages: usize) -> Result<(), VmError> {
         assert!(num_pages != 0, "tried to allocate zero pages");
-        if !is_multiple(page.addr.addr(), PAGE_SIZE) {
+        if !is_multiple(page.addr(), PAGE_SIZE) {
             panic!("Free page addr not page aligned.")
         }
 
         let mut pool = self.pool.lock();
-        pool.free_pages(page, num_pages);
+        pool.free_pages(Page::from(page), num_pages);
         Ok(())
     }
 }

@@ -10,6 +10,7 @@
 #![feature(unsized_fn_params)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
+extern crate alloc;
 
 #[macro_use]
 pub mod log;
@@ -18,7 +19,6 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod vm;
-pub mod mem;
 pub mod collection;
 //pub mod alloc;
 
@@ -110,8 +110,6 @@ fn main() -> ! {
         log!(Debug, "Testing page allocation and freeing...");
         unsafe {
             vm::test_palloc();
-            log!(Debug, "Testing kalloc and kfree...");
-            vm::test_kalloc();
         }
     } else {
         //Interrupt other harts to init kpgtable.

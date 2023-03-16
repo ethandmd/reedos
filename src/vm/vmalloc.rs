@@ -4,7 +4,7 @@ use core::mem::size_of;
 use super::{palloc, palloc::Page, pfree, VmError};
 use crate::hw::param::PAGE_SIZE;
 
-const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 - 8 = 4080.
+pub const MAX_CHUNK_SIZE: usize = 4080; // PAGE_SIZE - ZONE_HEADER_SIZE - HEADER_SIZE = 4096 - 8 - 8 = 4080.
 const HEADER_SIZE: usize = size_of::<Header>();
 const ZONE_SIZE: usize = 8;
 const HEADER_USED: usize = 1 << 12; // Chunk is in use flag.
