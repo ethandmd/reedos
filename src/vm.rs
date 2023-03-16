@@ -101,10 +101,13 @@ pub fn init() -> Result<(), PagePool> {
 
 /// A test designed to be used with GDB.
 pub unsafe fn test_palloc() {
-    let allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
+    let mut allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
     //println!("allocd addr: {:?}", allocd.addr);
     allocd.addr.write(0xdeadbeaf);
     let _ = PAGEPOOL.get_mut().unwrap().pfree(allocd);
+    allocd = PAGEPOOL.get_mut().unwrap().palloc_plural(2).unwrap();
+    allocd.addr.write_bytes(5, PAGE_SIZE * 2);
+    let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(allocd, 2);
     log!(Debug, "Successful test of page allocation and freeing...");
 }
 
