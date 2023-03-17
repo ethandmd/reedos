@@ -42,7 +42,7 @@ In order to get started with this project you'll need the following:
 
 ### Debug tools
 You may find the following debug tools (that you have mostly already installed) helpful:
-- `riscv64-unknown-elf-{objdump, gdb}` <-- Strongly recommend viewing docs material on becoming a GDB power user.
+- `riscv64-unknown-elf-{objdump, gdb}` <-- Recommend viewing docs material on becoming a GDB power user.
 - In Qemu with `-nographic` use `Ctr+A` then `c` to get to console, run `help` to see available commands.
 
 ### Docs
