@@ -164,5 +164,7 @@ pub unsafe fn test_galloc() {
       let mut big: Box<[u64; 513]> = Box::new([0x8BADF00D;513]);
       let _a_big = big.as_mut();
     }
+
+    log!(Debug, "Successful test of alloc crate...");
 }
 
