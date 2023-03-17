@@ -154,7 +154,7 @@ pub unsafe fn test_galloc() {
         // Slightly more interesting... it also works! Look at GDB
         // and watch for the zone headers + chunk headers indicating 'in use' and
         // 'chunk size'. Then watch as these go out of scope.
-        let mut one_vec: Box<collections::VecDeque<u32>> = Box::new(collections::VecDeque::new());
+        let mut one_vec: Box<collections::VecDeque<u32>> = Box::default();
         one_vec.push_back(555);
         one_vec.push_front(111);
         let _a_vec: *mut collections::VecDeque<u32> = one_vec.as_mut();

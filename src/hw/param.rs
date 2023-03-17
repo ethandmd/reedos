@@ -102,7 +102,7 @@ pub static PAGE_SIZE: usize = 4096;
 pub const NHART: usize = 2;
 
 // Unnecessary.
-pub static BANNER: &'static str = r#"
+pub static BANNER: &str = r#"
 Mellow Swirled,
                        __
    ________  ___  ____/ /___  _____

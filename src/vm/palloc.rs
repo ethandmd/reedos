@@ -256,7 +256,7 @@ impl Pool {
             cur = Page::from(cur.addr.map_addr(|addr| addr + 0x1000));
         }
 
-        return Ok(start_region);
+        Ok(start_region)
     }
 
     fn free_pages(&mut self, mut page: Page, num_pages: usize) {
