@@ -1,3 +1,0 @@
-\beamer@sectionintoc {1}{What We've Done}{3}{0}{1}
-\beamer@sectionintoc {2}{What You Can or Might Want To Use}{4}{0}{2}
-\beamer@sectionintoc {3}{What You Could Do}{5}{0}{3}
