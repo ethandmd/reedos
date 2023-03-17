@@ -205,11 +205,13 @@ impl Pool {
         // ^ the first page of a contigous free region, we will take
         // start_region through page (inclusive) on success
 
-        while (page.addr.map_addr(|addr| addr - start_region.addr.addr())).addr() / 0x1000 < num_pages - 1 {
+        while (page.addr.map_addr(|addr| addr - start_region.addr.addr())).addr() / 0x1000
+            < num_pages - 1
+        {
             // until it's big enough
 
-            while next as usize == page.addr as usize + 0x1000 &&
-                (page.addr as usize - start_region.addr as usize) / 0x1000 < num_pages - 1
+            while next as usize == page.addr as usize + 0x1000
+                && (page.addr as usize - start_region.addr as usize) / 0x1000 < num_pages - 1
             {
                 // until its big enough or there was a gap
                 page = Page::from(next);
@@ -245,7 +247,6 @@ impl Pool {
             // not first chunk in pool
             Page::from(before_region).write_next(next);
             Page::from(next).write_prev(before_region);
-
         }
 
         // we found it
@@ -271,14 +272,15 @@ impl Pool {
             curr_page.zero();
             let next_page = Page::from(curr_page.addr.map_addr(|addr| addr + 0x1000));
             match prev_page {
-                None => { curr_page.write_next(next_page.addr); },
+                None => {
+                    curr_page.write_next(next_page.addr);
+                }
                 Some(mut prev) => {
                     curr_page.write_prev(prev.addr);
                     prev.write_next(curr_page.addr);
                 }
             }
             (prev_page, curr_page) = (Some(curr_page), next_page);
-
         }
         // zeroed and internally linked
 
@@ -293,11 +295,10 @@ impl Pool {
                 } else {
                     // will insert after insert_location
                     let mut head_next = head.read_free().1;
-                    while head_next != example_null &&
-                        head_next < region_end.addr {
-                            head = Page::from(head_next);
-                            head_next = head.read_free().1;
-                        }
+                    while head_next != example_null && head_next < region_end.addr {
+                        head = Page::from(head_next);
+                        head_next = head.read_free().1;
+                    }
 
                     if head_next == example_null {
                         // insert at the end
@@ -311,7 +312,7 @@ impl Pool {
                         Page::from(head_next).write_prev(region_end.addr);
                     }
                 }
-            },
+            }
             None => {
                 page.write_prev(example_null);
                 region_end.write_next(example_null);

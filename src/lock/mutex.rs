@@ -2,10 +2,10 @@
 /// Inspiration taken in no small part from the awesome:
 /// <https://marabos.nl/atomics/building-locks.html#mutex>
 ///
-/// Opportunity for improvement on interrupt safe locks. 
+/// Opportunity for improvement on interrupt safe locks.
 use core::cell::UnsafeCell;
-use core::sync::atomic::*;
 use core::hint::spin_loop;
+use core::sync::atomic::*;
 
 /// Returned from successfully locking a mutex.
 pub struct MutexGuard<'a, T> {

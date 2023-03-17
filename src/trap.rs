@@ -1,7 +1,7 @@
 //! Kernel trap handlers.
-use crate::vm::ptable::PageTable;
 use crate::device::clint;
 use crate::hw::riscv;
+use crate::vm::ptable::PageTable;
 
 use crate::log;
 

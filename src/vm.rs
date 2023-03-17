@@ -1,24 +1,26 @@
 //! Virtual Memory
+pub mod global;
 mod palloc;
 pub mod process;
 pub mod ptable;
 pub mod vmalloc;
-pub mod global;
 
 use crate::hw::param::*;
-use core::cell::OnceCell;
-use core::alloc::{GlobalAlloc, Layout};
 use alloc::boxed::Box;
+use core::alloc::{GlobalAlloc, Layout};
+use core::cell::OnceCell;
 
+use global::Galloc;
 use palloc::*;
 use process::Process;
 use ptable::kpage_init; //, PageTable};
-use global::Galloc;
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
 #[global_allocator]
-static mut GLOBAL: GlobalWrapper = GlobalWrapper { inner: OnceCell::new(), };
+static mut GLOBAL: GlobalWrapper = GlobalWrapper {
+    inner: OnceCell::new(),
+};
 
 struct GlobalWrapper {
     inner: OnceCell<Galloc>,
@@ -37,12 +39,7 @@ unsafe impl GlobalAlloc for GlobalWrapper {
         self.inner.get().unwrap().alloc_zeroed(layout)
     }
 
-    unsafe fn realloc(
-        &self,
-        ptr: *mut u8,
-        layout: Layout,
-        new_size: usize
-    ) -> *mut u8 {
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         self.inner.get().unwrap().realloc(ptr, layout, new_size)
     }
 }
@@ -111,7 +108,7 @@ pub fn init() -> Result<(), PagePool> {
 
     unsafe {
         match GLOBAL.inner.set(Galloc::new(PAGEPOOL.get_mut().unwrap())) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(_) => {
                 panic!("vm double init.")
             }
@@ -134,12 +131,12 @@ pub unsafe fn test_palloc() {
     let one = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
     one.addr.write(0xdeadbeaf);
 
-    let many  = PAGEPOOL.get_mut().unwrap().palloc_plural(5).unwrap();
+    let many = PAGEPOOL.get_mut().unwrap().palloc_plural(5).unwrap();
     many.write_bytes(5, 512 * 2);
 
     let _ = PAGEPOOL.get_mut().unwrap().pfree(one);
     let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(many, 5);
-    
+
     log!(Debug, "Successful test of page allocation and freeing...");
 }
 
@@ -160,11 +157,11 @@ pub unsafe fn test_galloc() {
         let _a_vec: *mut collections::VecDeque<u32> = one_vec.as_mut();
     }
 
-    { // More than a page.
-      let mut big: Box<[u64; 513]> = Box::new([0x8BADF00D;513]);
-      let _a_big = big.as_mut();
+    {
+        // More than a page.
+        let mut big: Box<[u64; 513]> = Box::new([0x8BADF00D; 513]);
+        let _a_big = big.as_mut();
     }
 
     log!(Debug, "Successful test of alloc crate...");
 }
-

@@ -142,7 +142,7 @@ pub fn write_mie(x: u64) {
         asm!("csrw mie, {}", in(reg) x);
     }
 }
- 
+
 /// SATP Sv39 mode: (8L << 60)
 // From addr to satp reg: (pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 pub fn read_satp() -> usize {

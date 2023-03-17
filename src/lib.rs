@@ -14,13 +14,12 @@ extern crate alloc;
 
 #[macro_use]
 pub mod log;
+pub mod collection;
 pub mod device;
 pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod vm;
-pub mod collection;
-//pub mod alloc;
 
 use crate::device::uart;
 use crate::hw::param;
