@@ -5,7 +5,8 @@ macro_rules! print
     ($($args:tt)+) => ({
         use core::fmt::Write;
         use crate::uart;
-        let _ = write!(uart::WRITER.lock(), $($args)+);
+        // let _ = write!(uart::WRITER.lock(), $($args)+);
+        let _ = write!(uart::Uart::new().lock(), $($args)+);
     });
 }
 

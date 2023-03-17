@@ -35,14 +35,16 @@ use core::ptr::addr_of_mut;
 // TODO consider reworking this to have a consistent naming scheme and
 // maybe a macro for the getter functions.
 extern "C" {
-    static mut __text_end: usize;
-    static mut __bss_start: usize;
-    static mut __bss_end: usize;
-    static mut __memory_end: usize;
+    static mut _text_end: usize;
+    static mut _bss_start: usize;
+    static mut _bss_end: usize;
+    static mut _memory_end: usize;
     static mut _roedata: usize;
     static mut _edata: usize;
-    static mut __stacks_start: usize;
-    static mut __stacks_end: usize;
+    static mut _stacks_start: usize;
+    static mut _stacks_end: usize;
+    static mut _intstacks_start: usize;
+    static mut _intstacks_end: usize;
 }
 
 /// CLINT base address.
@@ -55,15 +57,15 @@ pub const UART_BASE: usize = 0x10000000;
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
 pub fn text_end() -> *mut usize {
-    unsafe { addr_of_mut!(__text_end) }
+    unsafe { addr_of_mut!(_text_end) }
 }
 
 pub fn bss_end() -> *mut usize {
-    unsafe { addr_of_mut!(__bss_end) }
+    unsafe { addr_of_mut!(_bss_end) }
 }
 
 pub fn bss_start() -> *mut usize {
-    unsafe { addr_of_mut!(__bss_start) }
+    unsafe { addr_of_mut!(_bss_start) }
 }
 
 pub fn rodata_end() -> *mut usize {
@@ -75,15 +77,23 @@ pub fn data_end() -> *mut usize {
 }
 
 pub fn stacks_start() -> *mut usize {
-    unsafe { addr_of_mut!(__stacks_start) }
+    unsafe { addr_of_mut!(_stacks_start) }
 }
 
 pub fn stacks_end() -> *mut usize {
-    unsafe { addr_of_mut!(__stacks_end) }
+    unsafe { addr_of_mut!(_stacks_end) }
+}
+
+pub fn intstacks_start() -> *mut usize {
+    unsafe { addr_of_mut!(_intstacks_start) }
+}
+
+pub fn intstacks_end() -> *mut usize {
+    unsafe { addr_of_mut!(_intstacks_end) }
 }
 
 pub fn dram_end() -> *mut usize {
-    unsafe { addr_of_mut!(__memory_end) }
+    unsafe { addr_of_mut!(_memory_end) }
 }
 
 pub static PAGE_SIZE: usize = 4096;

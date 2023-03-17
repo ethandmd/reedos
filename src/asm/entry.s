@@ -22,22 +22,33 @@
     .option push
     .option norelax
         # Linker position data relative to gp
-    .extern __global_pointer
-        la gp, __global_pointer
+    .extern _global_pointer
+        la gp, _global_pointer
     .option pop
         # Set up stack per of hart ids according to linker script
 
         # Add 4k guard page per hart
         csrr a1, mhartid
-        sll a1, a1, 1 # Multiple hartid by 2 to get alternating pages
-        li a0, 0x1000
+        #sll a1, a1, 1 # Multiple hartid by 2 to get alternating pages
+        li a0, 0x3000
         mul a1, a1, a0
-    .extern __stacks_end # Linker supplied
-        la a2, __stacks_end
+    .extern _stacks_end # Linker supplied
+        la a2, _stacks_end
         sub sp, a2, a1
 
+    .extern _intstacks_end
+        csrr a1, mhartid
+        li a0, 0x4000
+        mul a1, a1, a0
+        la a2, _intstacks_end
+        sub a2, a2, a1
+        csrw mscratch, a2 # Write per hart mscratch pad
+        li a0, 0x2000
+        sub a2, a2, a0 # Move sp down by scratch pad page + guard page
+        csrw sscratch, a2 # Write per hart sscratch pad
+
         # Jump to _start in src/main.rs
-        .extern _start
+    .extern _start
         call _start
     spin:
         wfi

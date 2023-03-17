@@ -6,20 +6,16 @@ MEMORY
   ram  (wxa) : ORIGIN = 0x80000000, LENGTH = 128M
 }
 
-/* If you don't Align(16), it breaks. If you try to page align .text,
-it breaks.  Align seems to only work INSIDE sections. To make mapping
-nice. Sections should be page aligned. */
-
 SECTIONS
 {
   .text : {
       *(.text .text.*)
       . = ALIGN(0x1000);
-      PROVIDE(__text_end = .);
+      PROVIDE(_text_end = .);
       PROVIDE(_etext = .);
   }
 
-  PROVIDE(__global_pointer = .);
+  PROVIDE(_global_pointer = .);
 
   .rodata : {
       *(.srodata .srodata.*)
@@ -37,21 +33,27 @@ SECTIONS
   /* lower guard page included in above */
   .stacks : {
       . = ALIGN(0x1000);
-      PROVIDE(__stacks_start = .);
-      . = . + (4096 * 2 * 2); /* NHARTS with a guard page each, unstable */
-      PROVIDE(__stacks_end = .);
+      PROVIDE(_stacks_start = .);
+      . = . + (4096 * 3 * 2); /* NHARTS with a guard page each, unstable */
+      PROVIDE(_stacks_end = .);
+  }
+  .intstacks : {
+      . = ALIGN(0x1000);
+      PROVIDE(_intstacks_start = .);
+      . = . + (0x1000 * 4 * 2);
+      PROVIDE(_intstacks_end = .);
   }
   . = . + 4096; /* guard page */
   /* stacks should start at stack end and alternate with guard pages going down */
 
   .bss : {
       . = ALIGN(0x1000);
-      PROVIDE(__bss_start = .);
+      PROVIDE(_bss_start = .);
       *(.sbss .sbss.*)
       *(.bss .bss.*)
       . = ALIGN(0x1000);
-      PROVIDE(__bss_end = .);
+      PROVIDE(_bss_end = .);
   }
   PROVIDE(_end = .);
-  PROVIDE(__memory_end = ORIGIN(ram) + LENGTH(ram));
+  PROVIDE(_memory_end = ORIGIN(ram) + LENGTH(ram));
 }
