@@ -33,14 +33,141 @@
 
 \begin{frame}
   \frametitle{Pre-boot and Linker}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Linker script:
+      \begin{itemize}
+      \item Organize reedos ELF binary to QEMU expectations.\\
+      \item Bound symbols to access at runtime.\\
+      \item Provide alignment where needed.\\
+      \end{itemize}
+      Linking required to combine Rust code and Assembly.
+    \end{column}
 
-  \begin{minipage}{0.5\textwidth}
-    Our linker script:
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{linker.png}
+    \end{column}
 
-  \end{minipage}
-  \begin{minipage}{0.5\textwidth}
-  \end{minipage}
+  \end{columns}
 
+\end{frame}
+
+\begin{frame}
+  \frametitle{Entry into Assembly}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      The first assembly to be run on boot.
+      \begin{itemize}
+      \item All harts jump to the same place.\\
+      \item Set up primary stack and interrupt stack per hart.\\
+      \item Prevent harts from colliding in memory.\\
+      \item Jump to rust.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{entry.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Start into Rust}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Setup for transition to supervisor mode
+      \begin{itemize}
+      \item Disable paging until \begin{verbatim}vm::init\end{verbatim}.\\
+      \item Do setup that requires high privilege.\\
+      \item ID harts in non-protected register.\\
+      \item Begin firing M-mode timer interrupts.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{start.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Main}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Initialize kernel subsystems on hart 0.
+      \begin{itemize}
+      \item Devices\\
+      \item Exception and Interrupts traps\\
+      \item Virtual memory subsystem
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{main.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Uart Device}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Treat serial port as streaming device at byte granularity.
+      \begin{itemize}
+      \item Initialize to match QEMU\\
+      \item Protect with spinlock and hook with \verb_print!_
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{uart.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Trap into Assembly}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Middleman between rust and interrupting rust.
+      \begin{itemize}
+      \item Save registers to allow restoration of previous state.\\
+      \item Make it safe to call rust, even if clobbered registers are in use.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{trapasm.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Trap in Rust}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Switch based on \verb_mcause_ or \verb_scause_
+      \begin{itemize}
+      \item Reset timer interrupt to make it regularly scheduled.\\
+      \item Catch exceptions and halt execution.\\
+      \item TODO: catch page faults.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{traprs.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Virtual Memory Subsystem}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Contains most memory abstractions.
+      \begin{itemize}
+      \item Page allocation.\\
+      \item General allocation.\\
+      \item Kernel page table.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+    \end{column}
+  \end{columns}
 \end{frame}
 
 \section{What You Can or Might Want To Use}
