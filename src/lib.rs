@@ -14,7 +14,6 @@ extern crate alloc;
 
 #[macro_use]
 pub mod log;
-pub mod collection;
 pub mod device;
 pub mod hw;
 pub mod lock;
