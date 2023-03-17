@@ -129,13 +129,17 @@ pub fn init() -> Result<(), PagePool> {
 }
 
 /// A test designed to be used with GDB.
+/// Allocate A, then B. Free A, then B.
 pub unsafe fn test_palloc() {
-    let mut allocd = PAGEPOOL.get_mut().unwrap().palloc().unwrap().addr;
-    //println!("allocd addr: {:?}", allocd.addr);
-    allocd.write(0xdeadbeaf);
-    let _ = PAGEPOOL.get_mut().unwrap().pfree(Page::from(allocd));
-    allocd = PAGEPOOL.get_mut().unwrap().palloc_plural(5).unwrap();
-    allocd.write_bytes(5, 512 * 2);
-    let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(allocd, 5);
+    let one = PAGEPOOL.get_mut().unwrap().palloc().unwrap();
+    one.addr.write(0xdeadbeaf);
+
+    let many  = PAGEPOOL.get_mut().unwrap().palloc_plural(5).unwrap();
+    many.write_bytes(5, 512 * 2);
+
+    let _ = PAGEPOOL.get_mut().unwrap().pfree(one);
+    let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(many, 5);
+    
     log!(Debug, "Successful test of page allocation and freeing...");
 }
+
