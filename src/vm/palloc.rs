@@ -205,7 +205,7 @@ impl Pool {
         // ^ the first page of a contigous free region, we will take
         // start_region through page (inclusive) on success
 
-        while (page.addr as usize - start_region.addr as usize) / 0x1000 < num_pages - 1 {
+        while (page.addr.map_addr(|addr| addr - start_region.addr.addr())).addr() / 0x1000 < num_pages - 1 {
             // until it's big enough
 
             while next as usize == page.addr as usize + 0x1000 &&
@@ -263,37 +263,38 @@ impl Pool {
         assert!(num_pages != 0, "Tried to free zero pages");
         let example_null = core::ptr::null_mut::<usize>();
 
-        let mut region_end = page;
-        {
-            let mut region_prev: Option<Page> = None;
-            while (region_end.addr as usize - page.addr as usize ) / 0x1000 < num_pages {
-                region_end.zero();
-                match region_prev {
-                    None => {},
-                    Some(mut prev) => {
-                        region_end.write_prev(prev.addr);
-                        prev.write_next(region_end.addr);
-                    }
+        let mut region_end = Page::from(page.addr.map_addr(|addr| addr + (num_pages - 1) * 0x1000));
+        let stop = region_end.addr.map_addr(|addr| addr + 0x1000);
+        let mut prev_page: Option<Page> = None;
+        let mut curr_page = page;
+        while curr_page.addr < stop {
+            curr_page.zero();
+            let next_page = Page::from(curr_page.addr.map_addr(|addr| addr + 0x1000));
+            match prev_page {
+                None => { curr_page.write_next(next_page.addr); },
+                Some(mut prev) => {
+                    curr_page.write_prev(prev.addr);
+                    prev.write_next(curr_page.addr);
                 }
-                region_prev = Some(region_end);
-                region_end = Page::from(region_end.addr.map_addr(|addr| addr + 0x1000))
             }
+            (prev_page, curr_page) = (Some(curr_page), next_page);
+
         }
         // zeroed and internally linked
 
         match self.free {
             Some(mut head) => {
                 // special case, insert at beginning
-                if head.addr as usize > page.addr as usize {
-                    head.write_prev(page.addr);
-                    page.write_next(head.addr);
+                if head.addr > region_end.addr {
+                    head.write_prev(region_end.addr);
+                    region_end.write_next(head.addr);
                     page.write_prev(example_null);
                     self.free = Some(page);
                 } else {
                     // will insert after insert_location
                     let mut head_next = head.read_free().1;
                     while head_next != example_null &&
-                        (head_next as usize) < page.addr as usize {
+                        head_next < region_end.addr {
                             head = Page::from(head_next);
                             head_next = head.read_free().1;
                         }
