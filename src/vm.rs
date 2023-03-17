@@ -134,8 +134,8 @@ pub unsafe fn test_palloc() {
     //println!("allocd addr: {:?}", allocd.addr);
     allocd.write(0xdeadbeaf);
     let _ = PAGEPOOL.get_mut().unwrap().pfree(Page::from(allocd));
-    allocd = PAGEPOOL.get_mut().unwrap().palloc_plural(2).unwrap();
-    allocd.write_bytes(5, PAGE_SIZE * 2);
-    let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(allocd, 2);
+    allocd = PAGEPOOL.get_mut().unwrap().palloc_plural(5).unwrap();
+    allocd.write_bytes(5, 512 * 2);
+    let _ = PAGEPOOL.get_mut().unwrap().pfree_plural(allocd, 5);
     log!(Debug, "Successful test of page allocation and freeing...");
 }
