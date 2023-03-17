@@ -6,7 +6,27 @@ See [Contribution Guidelines](CONTRIBUTING.md) if you're interested in getting i
 ### Notes
 We currently support Rust's `GlobalAlloc` in order to use the `alloc` crate. We do so by wrapping page 
 allocation and finer grained virtual memory allocation into a `Global Allocator` struct which implements
-Rust's `GlobalAlloc` trait.
+Rust's `GlobalAlloc` trait. As an example, this is valid `reedos` kernel code:
+```
+use alloc::collections;
+    {
+        // Simple test. It works!
+        let mut one = Box::new(5);
+
+        // Slightly more interesting... it also works! Look at this with GDB
+        // and watch for the zone headers + chunk headers indicating 'in use' and
+        // 'chunk size'. Then watch the headers as these go out of scope.
+        let mut one_vec: Box<collections::VecDeque<u32>> = Box::default();
+        one_vec.push_back(555);
+        one_vec.push_front(111);
+    }
+
+    {
+        // Now, more than a page.
+        let mut big: Box<[u64; 513]> = Box::new([0x8BADF00D; 513]);
+    }
+
+```
 
 ## Setup
 In order to get started with this project you'll need the following:
