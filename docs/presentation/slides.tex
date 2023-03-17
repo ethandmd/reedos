@@ -9,14 +9,22 @@
 \setlength\parindent{0pt}
 %end of tmupackage
 
-\newcommand{\lra}{$\longrightarrow$}
-\newcommand{\lla}{$\longleftarrow$}
 \usepackage{verbatim}
-\usepackage{multimedia}
 
 
 \author{Ethan McDonald \& Thomas Ulmer}
 \title{Reedos So Far}
+
+%% \AtBeginSection[]{
+%%   \begin{frame}
+%%   \vfill
+%%   \centering
+%%   \begin{beamercolorbox}[sep=8pt,center,shadow=true,rounded=true]{title}
+%%     \usebeamerfont{title}\insertsectionhead\par%
+%%   \end{beamercolorbox}
+%%   \vfill
+%%   \end{frame}
+%% }
 
 \begin{document}
 
@@ -162,24 +170,89 @@
       \begin{itemize}
       \item Page allocation.\\
       \item General allocation.\\
-      \item Kernel page table.
+      \item Virtual memory for kernel and processes.\\
+      \item Kernel page table maps all of memory with correct permissions.
       \end{itemize}
     \end{column}
     \begin{column}{0.5\textwidth}
+      \includegraphics[height=0.9\textheight]{memlayout.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Allocation}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Memory allocation has two forms:
+      \begin{itemize}
+      \item \verb_palloc_ gives physically contiguous pages.\\
+      \item \verb_vmalloc_ gives sub-page chunks like \verb_malloc_.\\
+      \item Global alloc... Sound familiar?
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      sick example
     \end{column}
   \end{columns}
 \end{frame}
 
 \section{What You Can or Might Want To Use}
 
-\begin{frame}
-  avasc
+\begin{frame}[fragile]
+  \frametitle{Useful tools}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Within reedos:
+      \begin{itemize}
+      \item The benefits of General Allocation: $\rightarrow$\\
+      \item \verb`log` for logging with severity via uart.\\
+      \item \verb`core::assert` for unsafe/runtime checking.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{rustalloc.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Useful tools}
+  Outside of reedos:
+  \begin{itemize}
+  \item GNU toolchain guides.\\
+  \item Specifically GDB.\\
+  \item Trust me use GDB.
+  \end{itemize}
+  \vspace{\baselineskip}
+  \includegraphics[width=\textwidth]{gdberror.png}
 \end{frame}
 
 \section{What You Could Do}
 \begin{frame}
-
-asd
+  \frametitle{What you could do / next steps}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Isolated / Reasonable projects:
+      \begin{itemize}
+      \item UART input and nice wrappers.\\
+      \item File system (+ shell?).\\
+      \item Device drivers.\\
+      \item Page Fault handling (+ swap?).\\
+      \item I/O device buffers.\\
+      \item Syscalls.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      Connected / Difficult projects:
+      \begin{itemize}
+      \item UEFI + SiFive QEMU / Real Hardware.\\
+      \item Network driver + stack.\\
+      \item Rust async / threads (See scheduling).
+      \end{itemize}
+    \end{column}
+  \end{columns}
 \end{frame}
+
 
 \end{document}
