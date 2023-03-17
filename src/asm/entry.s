@@ -36,19 +36,19 @@
         la a2, _stacks_end
         sub sp, a2, a1
 
-	.extern _intstacks_end
-		csrr a1, mhartid
-		li a0, 0x4000
-		mul a1, a1, a0
-		la a2, _intstacks_end
-		sub a2, a2, a1
-		csrw mscratch, a2 # Write per hart mscratch pad
-		li a0, 0x2000
-		sub a2, a2, a0 # Move sp down by scratch pad page + guard page
-		csrw sscratch, a2 # Write per hart sscratch pad
+    .extern _intstacks_end
+        csrr a1, mhartid
+        li a0, 0x4000
+        mul a1, a1, a0
+        la a2, _intstacks_end
+        sub a2, a2, a1
+        csrw mscratch, a2 # Write per hart mscratch pad
+        li a0, 0x2000
+        sub a2, a2, a0 # Move sp down by scratch pad page + guard page
+        csrw sscratch, a2 # Write per hart sscratch pad
 
         # Jump to _start in src/main.rs
-        .extern _start
+    .extern _start
         call _start
     spin:
         wfi
