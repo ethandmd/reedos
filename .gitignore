@@ -3,3 +3,7 @@
 *.o
 *.ELF
 .rust*
+
+#exclude stuff from making presentation
+/docs
+!/docs/presentation/slides.tex
