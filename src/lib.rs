@@ -107,9 +107,11 @@ fn main() -> ! {
         log!(Info, "Finished trap init...");
         let _ = vm::init();
         log!(Info, "Initialized the kernel page table...");
-        log!(Debug, "Testing page allocation and freeing...");
         unsafe {
+            log!(Debug, "Testing page allocation and freeing...");
             vm::test_palloc();
+            log!(Debug, "Testing galloc allocation and freeing...");
+            vm::test_galloc();
         }
     } else {
         //Interrupt other harts to init kpgtable.

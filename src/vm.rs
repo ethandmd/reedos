@@ -143,3 +143,26 @@ pub unsafe fn test_palloc() {
     log!(Debug, "Successful test of page allocation and freeing...");
 }
 
+pub unsafe fn test_galloc() {
+    use alloc::collections;
+    {
+        // Simple test. It works!
+        let mut one = Box::new(5);
+        let a_one: *mut u32 = one.as_mut();
+        assert_eq!(*one, *a_one);
+
+        // Slightly more interesting... it also works! Look at GDB
+        // and watch for the zone headers + chunk headers indicating 'in use' and
+        // 'chunk size'. Then watch as these go out of scope.
+        let mut one_vec: Box<collections::VecDeque<u32>> = Box::new(collections::VecDeque::new());
+        one_vec.push_back(555);
+        one_vec.push_front(111);
+        let _a_vec: *mut collections::VecDeque<u32> = one_vec.as_mut();
+    }
+
+    { // More than a page.
+      let mut big: Box<[u64; 513]> = Box::new([0x8BADF00D;513]);
+      let _a_big = big.as_mut();
+    }
+}
+
