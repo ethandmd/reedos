@@ -1,0 +1,28 @@
+# Objcopy
+This page collects useful information for `objcopy`.
+
+Unless you are changing the build process significantly, this is likely not something you will need. Are you looking for `objdump` instead?
+
+`objcopy` is a gnu program from manipulating compiled object files which also includes the `ELF` format we are using as a final executable at the moment. Most of this info was pulled from the man page.
+
+Recall that you will likely need to invoke this program as something like:
+```
+$ riscv64-unknown-elf-objcopy
+```
+
+## Usage
+The most basic usage is
+```
+$ objcopy inputFile.o outputFile.o
+```
+This is simply a copy as one might expect. The most basic useful usage is
+```
+$ objcopy inputFile.o -O ELF outputFile.ELF
+```
+Which converts the object to an `ELF` format. You can also specify the input file format with `-I` although it is often not necessary.
+
+`objcopy` can also be use to strip symbols from object files or change their types but so far that has not been necessary for this project. The `man 1 objcopy` page has all the useful information for this program.
+
+
+
+<!- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

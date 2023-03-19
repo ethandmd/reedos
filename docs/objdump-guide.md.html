@@ -1,0 +1,42 @@
+# objdump
+`objdump` is a gnu program to extract data from object files in a human readable manner.
+
+Recall that you will likely need to invoke this program as something like:
+```
+$ riscv64-unknown-elf-objdump
+```
+
+When dumping large amounts of information, piping into `grep` or something similar is often a good idea.
+
+## Useful Operations
+As with most gnu programs, in addition to an object file (`reedos.ELF`), single letter flags with a dash or long form flags with two dashes control the actions of the program.
+
+`-C`
+: Demangle the names. Rust mangles names to allow function overloading.
+`-d`
+: Disassemble. Convert the machine code back into assembly.
+
+   - `--disassemble=symbol` starts the disassembly from the given symbol and saves you thousands of lines of terminal output. If the symbol looks like a function, then it will stop at the end of the function.
+   - `-l` annotate with source line numbers from debug information if possible.
+   - `--visualize-jumps[=color|=extended-color]` Show the target of branches and jumps within the function with lines. Useful but gets complicated quickly.
+   - `--disassembler-color=on` Try to add syntax coloring to produced assembly.
+
+`-D`
+: Disassemble all. Same as above but runs even on sections not marked as text (code) sections. Pray you don't need this.
+`-h`
+: Print a small summary of the sections included in the file.
+`-j name`
+: Limit operations to the section given by name.
+`-S`
+: Short for `-d -S`, intersperse disassembly with source code.
+`-t`
+: Print the symbol entries. This works like `nm` but with more readable information. The format produced for this project is the values/address of the symbol in hex, some characters that give metadata, the section it is associated with, the field (often the size of the symbol), and finally the name. The metadata characters are:
+
+   - l/g/u/!: local/global/unique/none.
+   - w: weak
+   - I/i: Indirect reference for another symbol/evaluated during reallocation processing
+   - d/D: debugging/Dynamic
+   - F/f/o: Function/file/object type symbol.
+
+
+<!- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

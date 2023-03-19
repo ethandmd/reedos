@@ -1,0 +1,50 @@
+# nm
+This page collects useful information about `nm`, the gnu program to list symbols from object files.
+
+The functionality of `nm` is a subset of the functionality of `objdump`, so that guide is likely more in-depth.
+
+Recall that you will likely need to invoke this program as something like:
+```
+$ riscv64-unknown-elf-nm
+```
+
+## Invoking
+Likely all you will need is
+```
+riscv...nm reedos.ELF
+```
+However it is highly recommended to pipe the output into `grep` or something like it so you don't have to scroll through several hundred to thousands of lines of symbols.
+
+## Interpreting Output
+`nm` produces one symbol per line, with the 'value' (location) on the left in hex, the metadata about said symbol, and the name in that order.
+
+Metadata characters you might be interested in:
+
+A
+: Absolute, value will not change by linking
+B/b
+: BSS, this data is likely uninitialized or zero initialized
+D/d
+: Data, this data is initialized in the data section
+G/g
+: This data is in a special section for small bits of initialized data
+I
+: Indirect, this symbol is an indirect reference to another symbol
+N
+: This is a debugging symbol
+R/r/n
+: Read, this symbol is in the read-only data section
+S/s
+: Small, this symbol is in a small section for uninitialized small objects
+T/t
+: Text, this symbol is in the text section and likely points to code
+U
+: Undefined, this symbol is undefined and will likely cause a linking error unless linked with another object file that defines this symbol
+V/v
+: this symbol is weak, and will defer to non-weak symbols with the same name at link time, or be zero without error
+W/w
+: Weak, this symbol is weak but has not be explicitly tagged as such.
+?
+: this symbol is an unknown type
+
+<!- Markdeep: --><style class="fallback">body{visibility:hidden;white-space:pre;font-family:monospace}</style><script src="markdeep.min.js" charset="utf-8"></script><script src="https://morgan3d.github.io/markdeep/latest/markdeep.min.js" charset="utf-8"></script><script>window.alreadyProcessedMarkdeep||(document.body.style.visibility="visible")</script>

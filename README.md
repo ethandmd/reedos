@@ -1,5 +1,5 @@
 # reedos
-You could say reed-oh-ESS, but we like to think it's barely FreeDOS minus the 'f'. Like rEE-doss. 
+You could say reed-oh-ESS, but we like to think it's barely FreeDOS minus the 'f'. Like rEE-doss.
 
 See [Contribution Guidelines](CONTRIBUTING.md) if you're interested in getting involved.
 
@@ -37,7 +37,9 @@ In order to get started with this project you'll need the following:
 ## Usage
 - Build, link, and run reedos on Qemu virt machine:
 `$ make run`
-- Clean up build artifacts:
+ - Qemu `-nographic` is exited with `C-a x`, that is `Control + a` followed by `x`.
+   -  with `c` instead gives a console, but you will find `gdb` to much more helpful.
+ - Clean up build artifacts:
 `$ make clean`
 
 ### Debug tools
