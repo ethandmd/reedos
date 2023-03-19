@@ -243,26 +243,32 @@
 \end{frame}
 
 \section{What You Could Do}
-\begin{frame}
+\begin{frame}[fragile]
   \frametitle{What you could do / next steps}
+  Project Ideas and Stubs
   \begin{columns}
     \begin{column}{0.5\textwidth}
-      Isolated / Reasonable projects:
       \begin{itemize}
       \item UART input and nice wrappers.\\
       \item File system (+ shell?).\\
       \item Device drivers.\\
       \item Page Fault handling (+ swap?).\\
       \item I/O device buffers.\\
-      \item Syscalls.
+      \item Syscalls.\\
+      \item Key/Value (\verb_alloc_?) / Page Cache.\\
       \end{itemize}
     \end{column}
     \begin{column}{0.5\textwidth}
-      Connected / Difficult projects:
+      Prototyped outside(?)
       \begin{itemize}
-      \item UEFI + SiFive QEMU / Real Hardware.\\
-      \item Network driver + stack.\\
-      \item Rust async / threads (See scheduling).
+      \item \verb_DataSource_ for whole disk partition.\\
+      \item L4-style synchronous IPC.\\
+      \item Condition variables (Async I/O or \verb_alloc::task_).\\
+      \end{itemize}
+      Our Short Term
+      \begin{itemize}
+      \item Hello World from userspace.\\
+      \item Process loading + scheduling.\\
       \end{itemize}
     \end{column}
   \end{columns}
