@@ -1,7 +1,7 @@
 //! Kernel trap handlers.
-use crate::vm::ptable::PageTable;
 use crate::device::clint;
 use crate::hw::riscv;
+use crate::vm::ptable::PageTable;
 
 use crate::log;
 
@@ -53,14 +53,12 @@ pub extern "C" fn m_handler() {
 pub extern "C" fn s_handler() {
     let cause = riscv::read_scause();
 
-    match cause {
-        _ => {
-            log::log!(
-                Warning,
-                "Uncaught supervisor mode interupt. scause: 0x{:x}",
-                cause
-            );
-            panic!()
-        }
+    {
+        log::log!(
+            Warning,
+            "Uncaught supervisor mode interupt. scause: 0x{:x}",
+            cause
+        );
+        panic!()
     }
 }

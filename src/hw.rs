@@ -2,9 +2,9 @@
 pub mod param;
 pub mod riscv;
 
-use crate::vm::process::Process;
 use crate::device::clint;
 use crate::trap;
+use crate::vm::process::Process;
 use riscv::*;
 
 /// Callee saved registers.

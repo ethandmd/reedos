@@ -7,8 +7,10 @@
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
 #![feature(once_cell)]
+#![feature(unsized_fn_params)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
+extern crate alloc;
 
 #[macro_use]
 pub mod log;
@@ -17,9 +19,6 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod vm;
-pub mod mem;
-pub mod collection;
-//pub mod alloc;
 
 use crate::device::uart;
 use crate::hw::param;
@@ -106,12 +105,12 @@ fn main() -> ! {
         log!(Info, "Finished trap init...");
         let _ = vm::init();
         log!(Info, "Initialized the kernel page table...");
-        log!(Debug, "Testing page allocation and freeing...");
         unsafe {
+            log!(Debug, "Testing page allocation and freeing...");
             vm::test_palloc();
+            log!(Debug, "Testing galloc allocation and freeing...");
+            vm::test_galloc();
         }
-        log!(Debug, "Testing general subpage allocation...");
-        vm::test_galloc();
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

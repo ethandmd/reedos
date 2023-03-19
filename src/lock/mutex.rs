@@ -1,11 +1,10 @@
 //! Spinlock mutex implementation
 /// Inspiration taken in no small part from the awesome:
-/// + https://marabos.nl/atomics/building-locks.html#mutex
-/// as well as:
-/// + https://github.com/westerndigitalcorporation/RISC-V-Linux/blob/master/linux/Documentation/locking/mutex-design.txt
+/// <https://marabos.nl/atomics/building-locks.html#mutex>
 ///
-/// Opportunity for improvement on interrupt safe locks. 
+/// Opportunity for improvement on interrupt safe locks.
 use core::cell::UnsafeCell;
+use core::hint::spin_loop;
 use core::sync::atomic::*;
 
 /// Returned from successfully locking a mutex.
@@ -46,7 +45,8 @@ pub struct Mutex<T> {
 unsafe impl<T: Send> Sync for Mutex<T> {}
 
 impl<T> Mutex<T> {
-    /// https://doc.rust-lang.org/reference/const_eval.html
+    /// Reference:
+    /// <https://doc.rust-lang.org/reference/const_eval.html>
     pub const fn new(value: T) -> Self {
         Mutex {
             lock_state: AtomicU32::new(0),
@@ -59,9 +59,9 @@ impl<T> Mutex<T> {
     /// after lock is acquired.
     pub fn lock(&self) -> MutexGuard<T> {
         // Use Acquire memory order to load lock value.
-        // TODO:
-        // Spin loop improvement.
-        while self.lock_state.swap(1, Ordering::Acquire) == 1 {}
+        while self.lock_state.swap(1, Ordering::Acquire) == 1 {
+            spin_loop();
+        }
         MutexGuard { mutex: self }
     }
 }

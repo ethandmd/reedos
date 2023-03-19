@@ -142,7 +142,7 @@ pub fn write_mie(x: u64) {
         asm!("csrw mie, {}", in(reg) x);
     }
 }
- 
+
 /// SATP Sv39 mode: (8L << 60)
 // From addr to satp reg: (pagetable) (SATP_SV39 | (((uint64)pagetable) >> 12))
 pub fn read_satp() -> usize {
@@ -221,7 +221,7 @@ pub fn read_pmpcfg0() -> usize {
 }
 
 /// Just for curiosity's sake:
-/// https://github.com/rust-lang/rust/issues/82753
+/// <https://github.com/rust-lang/rust/issues/82753>
 /// tp := thread pointer register.
 /// This way we can query a hart's hartid and store it in tp reg.
 pub fn write_tp(id: u64) {

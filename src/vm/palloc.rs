@@ -47,7 +47,10 @@ impl PagePool {
         let mut pool = self.pool.lock();
         match pool.free {
             None => Err(VmError::OutOfPages),
-            Some(page) => Ok(pool.alloc_page(page)),
+            Some(page) => match pool.alloc_pages(page, 1) {
+                Err(_) => Err(VmError::OutOfPages),
+                Ok(ptr) => Ok(ptr),
+            },
         }
     }
 
@@ -59,7 +62,32 @@ impl PagePool {
         }
 
         let mut pool = self.pool.lock();
-        Ok(pool.free_page(page))
+        pool.free_pages(page, 1);
+        Ok(())
+    }
+
+    pub fn palloc_plural(&mut self, num_pages: usize) -> Result<*mut usize, VmError> {
+        assert!(num_pages != 0, "tried to allocate zero pages");
+        let mut pool = self.pool.lock();
+        match pool.free {
+            None => Err(VmError::OutOfPages),
+            Some(page) => match pool.alloc_pages(page, num_pages) {
+                Err(_) => Err(VmError::OutOfPages),
+                // ^ TODO consider partial allocations?
+                Ok(ptr) => Ok(ptr.addr),
+            },
+        }
+    }
+
+    pub fn pfree_plural(&mut self, page: *mut usize, num_pages: usize) -> Result<(), VmError> {
+        assert!(num_pages != 0, "tried to allocate zero pages");
+        if !is_multiple(page.addr(), PAGE_SIZE) {
+            panic!("Free page addr not page aligned.")
+        }
+
+        let mut pool = self.pool.lock();
+        pool.free_pages(Page::from(page), num_pages);
+        Ok(())
     }
 }
 
@@ -120,10 +148,17 @@ impl Page {
     /// Read the prev, next pointers of a page in the free list.
     fn read_free(&mut self) -> (*mut usize, *mut usize) {
         unsafe {
-            (self.addr.read_volatile() as *mut usize,
-            self.addr.add(1).read_volatile() as *mut usize)
+            (
+                self.addr.read_volatile() as *mut usize,
+                self.addr.add(1).read_volatile() as *mut usize,
+            )
         }
     }
+}
+
+enum PageError {
+    NoGap,
+    // maybe more?
 }
 
 impl Pool {
@@ -134,14 +169,14 @@ impl Pool {
         let mut free = Page::new(bottom);
         let mut pa = bottom.map_addr(|addr| addr + chunk_size);
         //let tmp = FreeNode::new(0x0 as *mut usize, pa); // First free page 'prev' == 0x0 => none.
-        free.write_free(0x0 as *mut usize, pa);
+        free.write_free(core::ptr::null_mut::<usize>(), pa);
         let last = top.map_addr(|addr| addr - chunk_size);
         // Init the remainder of the free list.
         while pa < top {
             let prev_pa = pa.map_addr(|addr| addr - chunk_size);
 
             let next_pa = if pa == last {
-                0x0 as *mut usize
+                core::ptr::null_mut::<usize>()
             } else {
                 pa.map_addr(|addr| addr + chunk_size)
             };
@@ -158,53 +193,132 @@ impl Pool {
         }
     }
 
-    // Remove the current head of the doubly linked list and replace it
-    // with the next free page in the list.
     // If this is the last free page in the pool, set the free pool to None
     // in order to trigger the OutOfPages error.
-    fn alloc_page(&mut self, mut page: Page) -> Page {
-        let (prev, next) = page.read_free(); // prev is always 0x0
-        assert_eq!(prev, 0x0 as *mut usize);
+    fn alloc_pages(&mut self, mut page: Page, num_pages: usize) -> Result<Page, PageError> {
+        let (prev, mut next) = page.read_free(); // prev is always 0x0
+        let example_null = core::ptr::null_mut::<usize>();
+        assert_eq!(prev, example_null);
+        // we don't use prev after this point
 
-        if next.addr() == 0x0 {
-            self.free = None;
-        } else {
-            let mut new = Page::from(next);
-            new.write_prev(prev);
-            self.free = Some(new);
-        }
+        let mut start_region = page;
+        // ^ the first page of a contigous free region, we will take
+        // start_region through page (inclusive) on success
 
-        page.zero();
-        page
-    }
+        while (page.addr.map_addr(|addr| addr - start_region.addr.addr())).addr() / 0x1000
+            < num_pages - 1
+        {
+            // until it's big enough
 
-    fn free_page(&mut self, mut page: Page) {
-        let (mut head_prev, mut head_next) = (0x0 as *mut usize, 0x0 as *mut usize);
-        let addr = page.addr;
-        page.zero();
+            while next as usize == page.addr as usize + 0x1000
+                && (page.addr as usize - start_region.addr as usize) / 0x1000 < num_pages - 1
+            {
+                // until its big enough or there was a gap
+                page = Page::from(next);
+                (_, next) = page.read_free();
+                if next as usize == 0x0 {
+                    return Err(PageError::NoGap);
+                    // ran off the end
+                }
+            }
 
-        match self.free {
-            Some(page) => { head_next = page.addr; }
-            None => {
-                page.write_free(head_prev, head_next);
-                self.free = Some(page);
-                return;
+            if next as usize != page.addr as usize + 0x1000 {
+                // too short!
+                start_region = Page::from(next);
             }
         }
 
-        while addr > head_next && head_next != 0x0 as *mut usize {
-            (head_prev, head_next) = Page::from(head_next).read_free();
-        }
-        if head_next != 0x0 as *mut usize {
-            Page::from(head_next).write_prev(addr); // link back from next
-        }
-        if head_prev != 0x0 as *mut usize {
-            Page::from(head_prev).write_next(addr); // link forward from prev
+        // we found it
+
+        // would love this as a match but no dice
+        let (sr_prev, _) = start_region.read_free();
+        if sr_prev == example_null {
+            // this was the first chunk
+            if next as usize == 0x0 {
+                self.free = None;
+            } else {
+                // remember next here is next from page
+                let mut next_page = Page::from(next);
+                next_page.write_prev(example_null);
+                self.free = Some(next_page);
+            }
         } else {
-            // insert at the front
-            self.free = Some(page);
+            let before_region = sr_prev;
+            // not first chunk in pool
+            Page::from(before_region).write_next(next);
+            Page::from(next).write_prev(before_region);
         }
-        page.write_free(head_prev, head_next);
+
+        // we found it
+        // zero them all out
+        let mut cur = start_region;
+        while cur.addr as usize <= page.addr as usize {
+            cur.zero();
+            cur = Page::from(cur.addr.map_addr(|addr| addr + 0x1000));
+        }
+
+        Ok(start_region)
+    }
+
+    fn free_pages(&mut self, mut page: Page, num_pages: usize) {
+        assert!(num_pages != 0, "Tried to free zero pages");
+        let example_null = core::ptr::null_mut::<usize>();
+
+        let mut region_end = Page::from(page.addr.map_addr(|addr| addr + (num_pages - 1) * 0x1000));
+        let stop = region_end.addr.map_addr(|addr| addr + 0x1000);
+        let mut prev_page: Option<Page> = None;
+        let mut curr_page = page;
+        while curr_page.addr < stop {
+            curr_page.zero();
+            let next_page = Page::from(curr_page.addr.map_addr(|addr| addr + 0x1000));
+            match prev_page {
+                None => {
+                    curr_page.write_next(next_page.addr);
+                }
+                Some(mut prev) => {
+                    curr_page.write_prev(prev.addr);
+                    prev.write_next(curr_page.addr);
+                }
+            }
+            (prev_page, curr_page) = (Some(curr_page), next_page);
+        }
+        // zeroed and internally linked
+
+        match self.free {
+            Some(mut head) => {
+                // special case, insert at beginning
+                if head.addr > region_end.addr {
+                    head.write_prev(region_end.addr);
+                    region_end.write_next(head.addr);
+                    page.write_prev(example_null);
+                    self.free = Some(page);
+                } else {
+                    // will insert after insert_location
+                    let mut head_next = head.read_free().1;
+                    while head_next != example_null && head_next < region_end.addr {
+                        head = Page::from(head_next);
+                        head_next = head.read_free().1;
+                    }
+
+                    if head_next == example_null {
+                        // insert at the end
+                        region_end.write_next(example_null);
+                        page.write_prev(head.addr);
+                        head.write_next(page.addr);
+                    } else {
+                        head.write_next(page.addr);
+                        page.write_prev(head.addr);
+                        region_end.write_next(head_next);
+                        Page::from(head_next).write_prev(region_end.addr);
+                    }
+                }
+            }
+            None => {
+                page.write_prev(example_null);
+                region_end.write_next(example_null);
+                self.free = Some(page);
+            }
+        }
     }
 }
 
