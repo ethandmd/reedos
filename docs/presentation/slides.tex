@@ -44,6 +44,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Linker script:
+      In kernel.ld
       \begin{itemize}
       \item Organize reedos ELF binary to QEMU expectations.\\
       \item Bound symbols to access at runtime.\\
@@ -65,6 +66,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       The first assembly to be run on boot.
+      In src/asm/entry.S:16
       \begin{itemize}
       \item All harts jump to the same place.\\
       \item Set up primary stack and interrupt stack per hart.\\
@@ -83,6 +85,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Setup for transition to supervisor mode
+      In src/lib.rs:50
       \begin{itemize}
       \item Disable paging until \begin{verbatim}vm::init\end{verbatim}.\\
       \item Do setup that requires high privilege.\\
@@ -101,6 +104,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Initialize kernel subsystems on hart 0.
+      In src/lib.rs:97
       \begin{itemize}
       \item Devices\\
       \item Exception and Interrupts traps\\
@@ -118,6 +122,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Treat serial port as streaming device at byte granularity.
+      In src/device/uart.rs:31
       \begin{itemize}
       \item Initialize to match QEMU\\
       \item Protect with spinlock and hook with \verb_print!_
@@ -134,6 +139,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Middleman between rust and interrupting rust.
+      In src/asm/trap.S:72
       \begin{itemize}
       \item Save registers to allow restoration of previous state.\\
       \item Make it safe to call rust, even if clobbered registers are in use.
@@ -150,6 +156,7 @@
   \begin{columns}
     \begin{column}{0.5\textwidth}
       Switch based on \verb_mcause_ or \verb_scause_
+      In src/trap.rs:32
       \begin{itemize}
       \item Reset timer interrupt to make it regularly scheduled.\\
       \item Catch exceptions and halt execution.\\
@@ -201,12 +208,29 @@
   \frametitle{Allocation Example}
   \begin{columns}
     \begin{column}{0.5\textwidth}
-      Allocation on the kernel heap.
-      \includegraphics[width=\textwidth]{alloc_vmalloc.png}
+        Allocation on the kernel heap.\\[5pt]
+        In src/vm.rs:143
+      \includegraphics[height=0.45\textwidth]{test_galloc.png}
     \end{column}
     \begin{column}{0.5\textwidth}
-      Free from the kernel heap.
+      Memory state while in use.
+      \includegraphics[width=\textwidth]{alloc_vmalloc.png}\\
+      Memory state after drop.
       \includegraphics[width=\textwidth]{free_vmalloc.png}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{GlobalAlloc}
+  \begin{columns}
+    \begin{column}{0.5\textwidth}
+      Implementing the GlobalAlloc trait with reedos memory allocation
+      tools.\\[5pt]
+      In src/vm.rs:20
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \includegraphics[width=\textwidth]{globalalloc_impl.png}
     \end{column}
   \end{columns}
 \end{frame}
