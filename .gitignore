@@ -5,5 +5,5 @@
 .rust*
 
 #exclude stuff from making presentation
-/docs
+/docs/presentation/*
 !/docs/presentation/slides.tex
