@@ -205,6 +205,8 @@ impl Drop for PhysPageExtent {
     }
 }
 
+unsafe impl Send for PhysPageExtent {}
+
 /// Should be one and only way to get physical pages outside of vm module/subsystem.
 pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
     let addr = unsafe {
