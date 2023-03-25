@@ -111,6 +111,7 @@ fn main() -> ! {
             log!(Debug, "Testing galloc allocation and freeing...");
             vm::test_galloc();
         }
+        log!(Info, "Completed all initialization and testing...");
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

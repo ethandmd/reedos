@@ -9,6 +9,7 @@ use crate::hw::param::*;
 use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::OnceCell;
+use core::mem::size_of;
 
 use global::Galloc;
 use palloc::*;
@@ -68,24 +69,6 @@ pub struct TaskNode {
     proc: Option<Box<Process>>,
     prev: Option<Box<TaskNode>>,
     next: Option<Box<TaskNode>>,
-}
-
-/// See `vm::vmalloc::Kalloc::alloc`.
-// pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
-//     unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
-// }
-
-/// See `vm::vmalloc::Kalloc::free`.
-// pub fn kfree<T>(ptr: *mut T) {
-//     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
-// }
-
-fn palloc() -> Result<Page, VmError> {
-    unsafe { PAGEPOOL.get_mut().unwrap().palloc() }
-}
-
-fn pfree(page: Page) -> Result<(), VmError> {
-    unsafe { PAGEPOOL.get_mut().unwrap().pfree(page) }
 }
 
 /// Initialize the kernel VM system.
@@ -164,4 +147,71 @@ pub unsafe fn test_galloc() {
     }
 
     log!(Debug, "Successful test of alloc crate...");
+}
+
+// -------------------------------------------------------------------
+
+
+// /// See `vm::vmalloc::Kalloc::alloc`.
+// pub fn kalloc(size: usize) -> Result<*mut usize, vmalloc::KallocError> {
+//     unsafe { VMALLOC.get_mut().unwrap().alloc(size) }
+// }
+
+// /// See `vm::vmalloc::Kalloc::free`.
+// pub fn kfree<T>(ptr: *mut T) {
+//     unsafe { VMALLOC.get_mut().unwrap().free(ptr) }
+// }
+
+// for internal vm use only.
+fn palloc() -> Result<Page, VmError> {
+    unsafe { PAGEPOOL.get_mut().unwrap().palloc() }
+}
+
+fn pfree(page: Page) -> Result<(), VmError> {
+    unsafe { PAGEPOOL.get_mut().unwrap().pfree(page) }
+}
+
+
+// -------------------------------------------------------------------
+
+/// Out facing interface for physical pages. Automatically cleaned up
+/// on drop. Intentionally does not impliment clone/copy/anything.
+pub struct PhysPageExtent {
+    head: Page,
+    num: usize,
+}
+
+impl PhysPageExtent {
+    pub fn start(&self) -> *mut usize {
+        self.head.addr
+    }
+
+    pub fn end(&self) -> *mut usize {
+        unsafe {
+            self.head.addr.offset((self.num * PAGE_SIZE / (size_of::<usize>())) as isize)
+        }
+    }
+}
+
+impl Drop for PhysPageExtent {
+    fn drop(&mut self) {
+        unsafe {
+            match PAGEPOOL.get_mut().unwrap()
+                .pfree_plural(self.head.addr, self.num) {
+                    Ok(_) => {},
+                    Err(e) => {panic!("Double palloc free! {:?}", e)}
+            }
+        }
+    }
+}
+
+/// Should be one and only way to get physical pages outside of vm module/subsystem.
+pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
+    let addr = unsafe {
+        PAGEPOOL.get_mut().unwrap().palloc_plural(num)?
+    };
+    Ok(PhysPageExtent {
+        head: Page::from(addr),
+        num,
+    })
 }
