@@ -14,7 +14,7 @@
 # For some reason gcc wants hashes but other people (like emacs) want to use semicolons
 
     .option norvc
-    .section .text
+    .section .text.entry
 
     .global _entry
     _entry:
