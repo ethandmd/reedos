@@ -23,6 +23,7 @@
               targets = [ "riscv64imac-unknown-none-elf" ];
             })
             riscv64-cc
+            qemu
           ];
 
           RISCV64_AS = "${riscv64-cc}/bin/${riscv64-cc.targetPrefix}as";
