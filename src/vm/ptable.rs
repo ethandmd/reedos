@@ -195,8 +195,8 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
 
     page_map(
         kpage_table,
-        UART_BASE as *mut usize,
-        UART_BASE as *mut usize,
+        UART0_BASE as *mut usize,
+        UART0_BASE as *mut usize,
         PAGE_SIZE,
         PTE_READ | PTE_WRITE,
     )?;

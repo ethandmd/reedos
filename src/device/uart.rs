@@ -5,7 +5,7 @@
 use core::fmt::Error;
 use core::fmt::Write;
 
-use crate::hw::param::UART_BASE;
+use crate::hw::param::UART0_BASE;
 use crate::lock::mutex::*;
 
 const IER: usize = 1; // Interrupt Enable Register
@@ -31,7 +31,7 @@ impl Write for Uart {
 impl Uart {
     pub fn init() {
         // https://mth.st/blog/riscv-qemu/AN-491.pdf <-- inclues 16650A ref
-        let ptr = UART_BASE as *mut u8;
+        let ptr = UART0_BASE as *mut u8;
         // Basic semantics:
         // `ptr` is a memory address.
         // We want to write certain values to 'registers' located
@@ -58,7 +58,7 @@ impl Uart {
 
     pub const fn new() -> Mutex<Self> {
         Mutex::new(Uart {
-            base_address: UART_BASE,
+            base_address: UART0_BASE,
         })
     }
 
