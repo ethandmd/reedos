@@ -1,7 +1,6 @@
 [unstable]
-build-std-features = ["compiler-builtins-mem"]
 build-std = ["core", "compiler_builtins", "alloc"]
-
+build-std-features = ["compiler-builtins-mem"]
 
 [build]
-target = "riscv64gc-unknown-none-elf"
+target = "riscv64imac-unknown-none-elf"
