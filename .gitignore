@@ -1,9 +1,15 @@
-/target
+# Build artifacts
+/target/
 *~
 *.o
-*.ELF
+*.elf
 .rust*
 
-#exclude stuff from making presentation
+# IDE/direnv stuff
+.vscode/
+.idea/
+.direnv/
+
+# Presentation stuff
 /docs/presentation/*
 !/docs/presentation/slides.tex
