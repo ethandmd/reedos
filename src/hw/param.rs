@@ -31,6 +31,19 @@
 
 use core::ptr::addr_of_mut;
 
+
+/// CLINT base address.
+pub const CLINT_BASE: usize = 0x2000000;
+
+/// UART0 base adderss.
+pub const UART0_BASE: usize = 0x10010000;
+
+/// PLIC base address.
+pub const PLIC_BASE: usize = 0xc000000;
+
+/// Start of kernel memory (first .text section goes here).
+pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
+
 // NOTE:
 // We can't just use link_name for linker symbols, cause they don't
 // bind correctly for some reason.
@@ -50,16 +63,6 @@ extern "C" {
     static mut _intstacks_start: usize;
     static mut _intstacks_end: usize;
 }
-
-/// CLINT base address.
-pub const CLINT_BASE: usize = 0x2000000;
-
-/// UART base adderss.
-pub const UART0_BASE: usize = 0x10010000;
-
-/// Start of kernel memory (first .text section goes here).
-pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
-
 pub fn text_end() -> *mut usize {
     unsafe { addr_of_mut!(_text_end) }
 }

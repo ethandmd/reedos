@@ -21,6 +21,7 @@ pub mod trap;
 pub mod vm;
 
 use crate::device::uart;
+use crate::device::plic;
 use crate::hw::param;
 use crate::hw::riscv::*;
 
@@ -111,10 +112,16 @@ fn main() -> ! {
             log!(Debug, "Testing galloc allocation and freeing...");
             vm::test_galloc();
         }
+        plic::global_init(0)
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
+        // TODO alert the non-bootstrap when shared things that need hart local init are up.
+        loop {}
+        // Do hart local init of shared things here
+
     }
 
+    // idle loop
     loop {}
 }
