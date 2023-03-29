@@ -6,7 +6,7 @@ build: .ALWAYS
 qemu: .ALWAYS
 	cargo run
 
-qemu-gdb: $(REEDOS)
+qemu-gdb:
 	DEBUG=1 cargo run
 
 lint: .ALWAYS
