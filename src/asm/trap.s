@@ -76,14 +76,14 @@
     .align 4
     .global __mtrapvec
 __mtrapvec:
-	csrrw sp, mscratch, sp
-	save_gp_regs    
+    csrrw sp, mscratch, sp
+    save_gp_regs
 
-	.extern m_handler
+    .extern m_handler
     call m_handler
-	
-	load_gp_regs
-	csrrw sp, mscratch, sp
+
+    load_gp_regs
+    csrrw sp, mscratch, sp
     mret
 
 # This is the supervisor trap vector, it just exists to get
@@ -92,12 +92,12 @@ __mtrapvec:
     .align 4
     .globl __strapvec
  __strapvec:
-	csrrw sp, sscratch, sp
-	save_gp_regs
+    csrrw sp, sscratch, sp
+    save_gp_regs
 
     .extern s_handler
     call s_handler
 
-	load_gp_regs
-	csrrw sp, sscratch, sp
+    load_gp_regs
+    csrrw sp, sscratch, sp
     sret
