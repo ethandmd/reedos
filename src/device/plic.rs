@@ -33,7 +33,7 @@ impl Plic {
                 // we need to enable this interupt
                 // set its priority
                 unsafe {
-                    *addr.offset(int as isize) = 1; // priority
+                    *addr.add(int) = 1; // priority
                 }
             }
         }
@@ -50,7 +50,7 @@ impl Plic {
 
         let final_offset = (RAW_OFFSET + (hart * RAW_STEP)) / 4;
         unsafe {
-            addr.offset(final_offset as isize).write_volatile(threshold);
+            addr.add(final_offset).write_volatile(threshold);
         }
     }
 
@@ -68,7 +68,7 @@ impl Plic {
 
         let final_offset = (RAW_OFFSET + (hart * RAW_STEP)) / 4;
         unsafe {
-            addr.offset(final_offset as isize).read_volatile()
+            addr.add(final_offset).read_volatile()
         }
     }
 
@@ -82,7 +82,7 @@ impl Plic {
 
         let final_offset = (RAW_OFFSET + (hart * RAW_STEP)) / 4;
         unsafe {
-            addr.offset(final_offset as isize).write_volatile(irq);
+            addr.add(final_offset).write_volatile(irq);
         }
     }
 }
