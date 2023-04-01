@@ -53,6 +53,9 @@ pub const CLINT_BASE: usize = 0x2000000;
 /// UART base adderss.
 pub const UART_BASE: usize = 0x10000000;
 
+/// PLIC base adderss.
+pub const PLIC_BASE: usize = 0x0c000000;
+
 /// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 

@@ -36,6 +36,7 @@ pub extern "C" fn m_handler() {
         riscv::MSTATUS_TIMER => {
             // log::log!(Debug, "Machine timer interupt, hart: {}", riscv::read_mhartid());
             clint::set_mtimecmp(10_000_000);
+            riscv::write_sip(2);
         }
         _ => {
             log::log!(

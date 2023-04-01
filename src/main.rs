@@ -22,6 +22,7 @@ pub mod trap;
 pub mod vm;
 
 use crate::device::uart;
+use crate::device::plic;
 use crate::hw::param;
 use crate::hw::riscv::*;
 
@@ -102,6 +103,9 @@ fn main() -> ! {
         uart::Uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
+        plic::global_init(0);
+        plic::hart_local_init();
+        log!(Info, "Finished PLIC init...");
         trap::init();
         log!(Info, "Finished trap init...");
         let _ = vm::init();
@@ -115,6 +119,10 @@ fn main() -> ! {
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
+        // spin while we wait for shared resources global init before
+        // the relative hart local-init
+        loop {}                 // TODO wakup
+        plic::hart_local_init();
     }
 
     loop {}
