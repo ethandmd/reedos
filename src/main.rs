@@ -112,6 +112,10 @@ fn main() -> ! {
             log!(Debug, "Testing galloc allocation and freeing...");
             vm::test_galloc();
         }
+        log!(Debug, "Testing phys page extent allocation and freeing...");
+        vm::test_phys_page();
+        log!(Debug, "Successful phys page extent allocation and freeing...");
+        log!(Info, "Completed all hart0 initialization and testing...");
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
