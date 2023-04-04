@@ -9,7 +9,6 @@ use crate::hw::param::*;
 use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::OnceCell;
-use core::mem::size_of;
 
 use global::Galloc;
 use palloc::*;
@@ -214,8 +213,8 @@ pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
 
 pub fn test_phys_page() {
     {
-        let ppe1 = request_phys_page(1).unwrap();
-        let ppe2 = request_phys_page(2).unwrap();
+        let _ = request_phys_page(1).unwrap();
+        let _ = request_phys_page(2).unwrap();
     }
-    let ppe11 = request_phys_page(1).unwrap();
+    let _ = request_phys_page(1).unwrap();
 }
