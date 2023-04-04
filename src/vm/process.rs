@@ -3,25 +3,29 @@
 
 // extern crate alloc;
 
-use crate::hw::HartContext;
-use crate::trap::TrapFrame;
-use crate::vm::ptable::PageTable;
-use crate::vm::Resource;
-use alloc::boxed::Box;
+// use alloc::boxed::Box;
 use alloc::collections::BTreeSet;
+
+
+// use crate::hw::HartContext;
+// use crate::trap::TrapFrame;
+use crate::vm::ptable::PageTable;
+use crate::vm::PhysPageExtent;
 
 pub struct Process {
     id: usize,
-    address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
+    // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
     state: ProcessState,
-    pgtbl: PageTable,
-    trapframe: TrapFrame,
-    ctx_regs: HartContext,
+    pub pgtbl: PageTable,
+    physPages: BTreeSet<PhysPageExtent>,
+    // trapframe: TrapFrame,
+    // ctx_regs: HartContext,
 }
 
 pub enum ProcessState {
+    Unstarted,
     Ready,
-    Run,
+    Running,
     Wait,
     Sleep,
     Dead,

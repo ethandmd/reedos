@@ -139,9 +139,17 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
     Ok(table.index_mut(idx))
 }
 
+/// Helper for making flags for page_map for unpriviledged processes
+pub fn user_process_flags(r: bool, w: bool, e: bool) -> usize {
+    PTE_USER |
+    if r {PTE_READ} else {0} |
+    if w {PTE_WRITE} else {0} |
+    if e {PTE_EXEC} else {0}
+}
+
 /// Maps some number of pages into the VM given by pt of byte length
 /// size.
-fn page_map(
+pub fn page_map(
     pt: PageTable,
     va: VirtAddress,
     pa: PhysAddress,
