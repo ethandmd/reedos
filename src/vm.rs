@@ -182,7 +182,7 @@ impl PhysPageExtent {
 
     pub fn end(&self) -> *mut usize {
         unsafe {
-            self.head.addr.offset((self.num * PAGE_SIZE / (size_of::<usize>())) as isize)
+            self.head.addr.byte_add(self.num * PAGE_SIZE)
         }
     }
 }
