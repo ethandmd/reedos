@@ -217,3 +217,11 @@ pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
         num,
     })
 }
+
+pub fn test_phys_page() {
+    {
+        let ppe1 = request_phys_page(1).unwrap();
+        let ppe2 = request_phys_page(2).unwrap();
+    }
+    let ppe11 = request_phys_page(1).unwrap();
+}
