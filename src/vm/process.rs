@@ -3,12 +3,12 @@
 
 // extern crate alloc;
 
-use alloc::boxed::Box;
-use alloc::collections::BTreeSet;
 use crate::hw::HartContext;
 use crate::trap::TrapFrame;
 use crate::vm::ptable::PageTable;
 use crate::vm::Resource;
+use alloc::boxed::Box;
+use alloc::collections::BTreeSet;
 
 pub struct Process {
     id: usize,
