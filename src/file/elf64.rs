@@ -1,26 +1,22 @@
 //! This module is for the interpretation of 64 bit ELF executable files.
-use core::assert;
-use core::mem::size_of;
-use crate::vm::process::Process;
-use crate::vm::{ptable, request_phys_page};
 
 #[repr(u8)]
 #[derive(Copy, Clone)]
-enum Endianness {
+pub enum Endianness {
     Little = 1,
     Big = 2,
 }
 
 #[repr(u8)]
 #[derive(Copy, Clone)]
-enum AddrWidth {
+pub enum AddrWidth {
     Word = 1,
     DoubleWord = 2,
 }
 
 #[repr(u16)]
 #[derive(Copy, Clone)]
-enum ELFType {
+pub enum ELFType {
     Relocatable = 1,
     Executable = 2,
     Shared = 3,
@@ -29,7 +25,7 @@ enum ELFType {
 
 #[repr(u16)]
 #[derive(Copy, Clone)]
-enum Architecture {
+pub enum Architecture {
     Unspecified = 0,
     Sparc = 2,
     X86 = 3,
@@ -48,34 +44,34 @@ enum Architecture {
 /// differ.
 #[repr(C)]
 #[derive(Copy, Clone)]
-struct ELFHeader {
-    magic: [u8; 4],
-    width: AddrWidth,
-    endian: Endianness,
-    header_version: u8,                // ELF header version / calling convetion
-    padding: [u8; 8],
-    ident_size: u8,             // possibly unused
+pub struct ELFHeader {
+    pub magic: [u8; 4],
+    pub width: AddrWidth,
+    pub endian: Endianness,
+    pub header_version: u8,                // ELF header version / calling convetion
+    pub padding: [u8; 8],
+    pub ident_size: u8,             // possibly unused
     // end of identifying info
-    elf_type: ELFType,
-    instruction_set: Architecture,
-    version: u16,
-    entry: usize,
-    program_header_pos: usize,
-    section_header_pos: usize,
-    flags: u32,                 // architecture dependent
-    header_size: u16,
-    program_entry_size: u16,
-    num_program_entries: u16,
-    section_entry_size: u16,
-    num_section_entries: u16,
-    section_name_index: u16,
+    pub elf_type: ELFType,
+    pub instruction_set: Architecture,
+    pub version: u16,
+    pub entry: usize,
+    pub program_header_pos: usize,
+    pub section_header_pos: usize,
+    pub flags: u32,                 // architecture dependent
+    pub header_size: u16,
+    pub program_entry_size: u16,
+    pub num_program_entries: u16,
+    pub section_entry_size: u16,
+    pub num_section_entries: u16,
+    pub section_name_index: u16,
     // index of section string table of names of sections
 }
 
 #[repr(u32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[non_exhaustive]
-enum ProgramSegmentType {
+pub enum ProgramSegmentType {
     Ignore = 0,
     Load = 1,
     Dynamic = 2,
@@ -87,8 +83,8 @@ enum ProgramSegmentType {
 }
 
 pub const PROG_SEG_EXEC: u16 = 1;
-const PROG_SEG_WRITE: u16 = 2;
-const PROG_SEG_READ: u16 = 4;
+pub const PROG_SEG_WRITE: u16 = 2;
+pub const PROG_SEG_READ: u16 = 4;
 
 /// A sub header of an ELF file describing the file itself. Also
 /// corresponds to the literal bits from the file. Not all values are
@@ -98,15 +94,15 @@ const PROG_SEG_READ: u16 = 4;
 /// and arrangment are different enough to warrant it.
 #[repr(C)]
 #[derive(Copy, Clone)]
-struct ProgramHeaderSegment64 {
-    seg_type: ProgramSegmentType,
-    flags: u16,                 // OR of PROG_SEG_*
-    file_offset: u64,
-    vmem_addr: u64,
-    unused: u64,                // for System V ABI anyway, would be phys addr
-    size_in_file: u64,
-    size_in_memory: u64,
-    alignment: u64,              // is a power of two
+pub struct ProgramHeaderSegment64 {
+    pub seg_type: ProgramSegmentType,
+    pub flags: u16,                 // OR of PROG_SEG_*
+    pub file_offset: u64,
+    pub vmem_addr: u64,
+    pub unused: u64,                // for System V ABI anyway, would be phys addr
+    pub size_in_file: u64,
+    pub size_in_memory: u64,
+    pub alignment: u64,              // is a power of two
 }
 
 // TODO sections are not implemented currently, as we are interested
@@ -143,9 +139,12 @@ struct ProgramHeaderSegment64 {
 //     }
 // }
 
+/// We expect that the data at source continues to be valid for the entire lifetime of ELFProgram.
+///
+/// TODO how to do wthat with rust lifetime stuff? Restart my attempt for a source trait?
 pub struct ELFProgram {
-    header: ELFHeader,
-    source: *const u8,
+    pub header: ELFHeader,
+    pub source: *const u8,
 }
 
 macro_rules! ill_formed {
@@ -162,6 +161,8 @@ macro_rules! unsupported {
 #[non_exhaustive]
 pub enum ELFError {
     MappedZeroPage,
+    FailedAlloc,
+    FailedMap,
 }
 
 impl ELFProgram {
@@ -205,41 +206,4 @@ impl ELFProgram {
         out
     }
 
-    pub fn populate_pagetable64(&self, proc: Process) -> Result<(), ELFError>{
-        assert!(self.header.program_entry_size as usize == size_of::<ProgramHeaderSegment64>(),
-        "Varying ELF entry size expectations.");
-
-        let num = self.header.num_program_entries;
-        let mut ptr = self.header.program_header_pos as *const ProgramHeaderSegment64;
-        for i in 0..num {
-            let segment = unsafe { *ptr.add(i as usize) };
-            if segment.seg_type != ProgramSegmentType::Load {
-                continue;
-            }
-            let n_pages = (segment.size_in_memory + (0x1000 - 1)) >> 12;
-            let pages = match request_phys_page(n_pages) {
-                Ok(p) => {p},
-                Err(e) => {
-                    panic!("Could not allocate VM for process, {:?}", e);
-                }
-            };
-            let flags = ptable::user_process_flags(
-                segment.flags & PROG_SEG_READ != 0,
-                segment.flags & PROG_SEG_WRITE != 0,
-                segment.flags & PROG_SEG_EXEC != 0
-            );
-
-            match ptable::page_map(
-                proc.pgtbl,
-                ptable::VirtAddress::from(segment.vmem_addr as *mut usize),
-                ptable::PhysAddress::from(pages.start() as *mut usize),
-                segment.size_in_memory as usize,
-                flags) {
-                Ok(_) => {},
-                Err(e) => {panic!("Error during process mapping! {:?}", e)}
-            }
-        }
-
-        Ok(())
-    }
 }

@@ -1,7 +1,6 @@
 //! Virtual Memory
 pub mod global;
 mod palloc;
-pub mod process;
 pub mod ptable;
 pub mod vmalloc;
 
@@ -12,7 +11,6 @@ use core::cell::OnceCell;
 
 use global::Galloc;
 use palloc::*;
-use process::Process;
 use ptable::kpage_init; //, PageTable};
 
 /// Global physical page pool allocated by the kernel physical allocator.
@@ -55,20 +53,6 @@ pub enum VmError {
     Koom,
 }
 
-/// Moving to `mod process`
-pub trait Resource {}
-
-/// Moving to `mod <TBD>`
-pub struct TaskList {
-    head: Option<Box<Process>>,
-}
-
-/// Moving to `mod <TBD>`
-pub struct TaskNode {
-    proc: Option<Box<Process>>,
-    prev: Option<Box<TaskNode>>,
-    next: Option<Box<TaskNode>>,
-}
 
 /// Initialize the kernel VM system.
 /// First, setup the kernel physical page pool.
