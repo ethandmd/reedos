@@ -39,6 +39,7 @@ pub enum Architecture {
     RISCV = 0xF3,
 }
 
+
 /// Corresponds to the literal bits of the header. Not all values are
 /// meaningful, and `usize` is used when 32 and 64 bit ELF files
 /// differ.
@@ -142,6 +143,12 @@ pub struct ProgramHeaderSegment64 {
 /// We expect that the data at source continues to be valid for the entire lifetime of ELFProgram.
 ///
 /// TODO how to do wthat with rust lifetime stuff? Restart my attempt for a source trait?
+///
+/// TODO consider interactions with lifetimes and if it makes more
+/// sense to have a in-memory ELF struct rather than moving only one
+/// part into memory at a time. Requires more copying, but allows
+/// closing the file / (currently) would avoid having to map the entire
+/// file for the full duration of process starting
 pub struct ELFProgram {
     pub header: ELFHeader,
     pub source: *const u8,
@@ -163,6 +170,7 @@ pub enum ELFError {
     MappedZeroPage,
     FailedAlloc,
     FailedMap,
+    InequalSizes,               // in_file and in_memory don't match
 }
 
 impl ELFProgram {

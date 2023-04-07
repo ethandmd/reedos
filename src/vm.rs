@@ -63,7 +63,7 @@ pub enum VmError {
 /// kernel's page table struct.
 pub fn init() -> Result<(), PagePool> {
     unsafe {
-        match PAGEPOOL.set(PagePool::new(bss_end(), dram_end())) {
+        match PAGEPOOL.set(PagePool::new(bss_end(), trampoline_target())) {
             Ok(_) => {}
             Err(_) => {
                 panic!("vm double init.")
