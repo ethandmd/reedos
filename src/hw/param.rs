@@ -27,26 +27,6 @@
 
 use core::ptr::addr_of_mut;
 
-// NOTE:
-// We can't just use link_name for linker symbols, cause they don't
-// bind correctly for some reason.
-// Instead, use core::ptr::addr_of!() to get address and then cast to usize.
-//
-// TODO consider reworking this to have a consistent naming scheme and
-// maybe a macro for the getter functions.
-extern "C" {
-    static mut _text_end: usize;
-    static mut _bss_start: usize;
-    static mut _bss_end: usize;
-    static mut _memory_end: usize;
-    static mut _roedata: usize;
-    static mut _edata: usize;
-    static mut _stacks_start: usize;
-    static mut _stacks_end: usize;
-    static mut _intstacks_start: usize;
-    static mut _intstacks_end: usize;
-}
-
 /// CLINT base address.
 pub const CLINT_BASE: usize = 0x2000000;
 
@@ -56,45 +36,45 @@ pub const UART_BASE: usize = 0x10000000;
 /// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
-pub fn text_end() -> *mut usize {
-    unsafe { addr_of_mut!(_text_end) }
+
+macro_rules! linker_var {
+    (
+        $linker_name: ident,
+        $rust_name: ident
+    ) => {
+        extern "C" { static mut $linker_name: usize; }
+        #[doc="Get the associated linker variable as a pointer"]
+        pub fn $rust_name() -> *mut usize {
+            unsafe { addr_of_mut!($linker_name) }
+        }
+    }
 }
 
-pub fn bss_end() -> *mut usize {
-    unsafe { addr_of_mut!(_bss_end) }
-}
+linker_var!(_trampoline_start, trampoline_start);
+linker_var!(_trampoline_end, trampoline_end);
+linker_var!(_trampoline_target, trampoline_target);
 
-pub fn bss_start() -> *mut usize {
-    unsafe { addr_of_mut!(_bss_start) }
-}
+linker_var!(_text_start, text_start);
+linker_var!(_text_end, text_end);
 
-pub fn rodata_end() -> *mut usize {
-    unsafe { addr_of_mut!(_roedata) }
-}
+linker_var!(_bss_start, bss_start);
+linker_var!(_bss_end, bss_end);
 
-pub fn data_end() -> *mut usize {
-    unsafe { addr_of_mut!(_edata) }
-}
+linker_var!(_rodata_start, rodata_start);
+linker_var!(_rodata_end, rodata_end);
 
-pub fn stacks_start() -> *mut usize {
-    unsafe { addr_of_mut!(_stacks_start) }
-}
+linker_var!(_data_start, data_start);
+linker_var!(_data_end, data_end);
 
-pub fn stacks_end() -> *mut usize {
-    unsafe { addr_of_mut!(_stacks_end) }
-}
+linker_var!(_stacks_start, stacks_start);
+linker_var!(_stacks_end, stacks_end);
 
-pub fn intstacks_start() -> *mut usize {
-    unsafe { addr_of_mut!(_intstacks_start) }
-}
+linker_var!(_intstacks_start, intstacks_start);
+linker_var!(_intstacks_end, intstacks_end);
 
-pub fn intstacks_end() -> *mut usize {
-    unsafe { addr_of_mut!(_intstacks_end) }
-}
+linker_var!(_memory_end, memory_end);
 
-pub fn dram_end() -> *mut usize {
-    unsafe { addr_of_mut!(_memory_end) }
-}
+linker_var!(_global_pointer, global_pointer);
 
 pub static PAGE_SIZE: usize = 4096;
 
