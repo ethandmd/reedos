@@ -9,6 +9,7 @@ use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
+use core::arch::asm;
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
@@ -142,8 +143,15 @@ impl Process {
             // we can't use PageTable.write_satp here becuase this is
             // not mapped into the process pagetable and it shouldn't
             // be. We want to do that later in the asm.
-            process_start_asm(self.saved_pc, self.pgtbl.base as usize);
+            // process_start_asm(self.saved_pc, self.pgtbl.base as usize);
+            asm!("mv a0, {saved_pc}",
+                 "mv a1, {base}",
+                 ".extern process_start_asm",
+                 "j process_start_asm",
+                 saved_pc = in(reg) self.saved_pc,
+                 base = in(reg) self.pgtbl.base);
         }
+        panic!("Failed to jump into process!");
     }
 }
 
