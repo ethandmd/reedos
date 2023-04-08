@@ -50,7 +50,7 @@ pub struct ELFHeader {
     pub width: AddrWidth,
     pub endian: Endianness,
     pub header_version: u8,                // ELF header version / calling convetion
-    pub padding: [u8; 8],
+    pub padding: [u8; 8],                  // first byte is OS/ABI info
     pub ident_size: u8,             // possibly unused
     // end of identifying info
     pub elf_type: ELFType,
@@ -58,7 +58,7 @@ pub struct ELFHeader {
     pub version: u32,
     pub entry: usize,
     pub program_header_pos: usize,
-    pub section_header_pos: usize,
+    pub section_header_pos: usize, // table index starts at 1
     pub flags: u32,                 // architecture dependent
     pub header_size: u16,
     pub program_entry_size: u16,
