@@ -50,9 +50,9 @@ macro_rules! linker_var {
     }
 }
 
-linker_var!(_trampoline_start, trampoline_start);
-linker_var!(_trampoline_end, trampoline_end);
-linker_var!(_trampoline_target, trampoline_target);
+// linker_var!(_trampoline_start, trampoline_start);
+// linker_var!(_trampoline_end, trampoline_end);
+// linker_var!(_trampoline_target, trampoline_target);
 
 linker_var!(_text_start, text_start);
 linker_var!(_text_end, text_end);

@@ -4,7 +4,10 @@
 
         ## The full contents of this file, and only this file, are
         ## mapped into the trampoline page
-        .section .trampoline
+        ## .section .trampoline
+
+        ## Not true, this is now part of text
+        .section .text
 
         ## jump into a process that hasn't been run yet
         ## pc in a0, new base pagetable addr in a1
@@ -13,11 +16,13 @@
         ## non-returning function call
         .global process_start_asm
 process_start_asm:
-        li x0, 0xdeadbeef
-        j process_start_asm
+        csrw sepc, a0
+        sfence.vma x0, x0
+        csrw satp, a1
+        sfence.vma x0, x0
+        sret
         ## current idea is to dip into M mode so that we can write
         ## satp and flush the TLB, and then jump into the program with
         ## a mret into user mode w/ mepc as the program entry
 
         ## this is the end of the file
-        .section .text

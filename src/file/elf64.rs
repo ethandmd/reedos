@@ -55,7 +55,7 @@ pub struct ELFHeader {
     // end of identifying info
     pub elf_type: ELFType,
     pub instruction_set: Architecture,
-    pub version: u16,
+    pub version: u32,
     pub entry: usize,
     pub program_header_pos: usize,
     pub section_header_pos: usize,
@@ -97,7 +97,7 @@ pub const PROG_SEG_READ: u16 = 4;
 #[derive(Copy, Clone)]
 pub struct ProgramHeaderSegment64 {
     pub seg_type: ProgramSegmentType,
-    pub flags: u16,                 // OR of PROG_SEG_*
+    pub flags: u32,                 // OR of PROG_SEG_*
     pub file_offset: u64,
     pub vmem_addr: u64,
     pub unused: u64,                // for System V ABI anyway, would be phys addr
@@ -166,11 +166,14 @@ macro_rules! unsupported {
 }
 
 #[non_exhaustive]
+#[derive(Debug)]
 pub enum ELFError {
     MappedZeroPage,
+    MappedKernelText,
     FailedAlloc,
     FailedMap,
     InequalSizes,               // in_file and in_memory don't match
+    ExcessiveAlignment,
 }
 
 impl ELFProgram {
@@ -184,7 +187,7 @@ impl ELFProgram {
             header: unsafe { *(src as *const ELFHeader) },
             source: src,
         };
-        if out.header.magic != [0x74, 'E' as u8, 'L' as u8, 'F' as u8] {
+        if out.header.magic != [0x7f, 'E' as u8, 'L' as u8, 'F' as u8] {
             ill_formed!();
         }
         // filter out illformed or unsupported ELFs

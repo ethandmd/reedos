@@ -117,7 +117,12 @@ fn main() -> ! {
         log!(Debug, "Testing phys page extent allocation and freeing...");
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
+
+        log!(Debug, "Testing basic processes...");
+        process::test_process_spin();
+        
         log!(Info, "Completed all hart0 initialization and testing...");
+        
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

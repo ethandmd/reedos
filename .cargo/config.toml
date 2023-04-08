@@ -4,7 +4,8 @@ build-std-features = ["compiler-builtins-mem"]
 
 [build]
 target = "riscv64imac-unknown-none-elf"
-rustflags = ["-C", "link-args=-Tkernel.ld"]
+rustflags = ["-C", "link-args=-Tkernel.ld --no-pie", "-C", "relocation-model=static"
+]
 
 [target.riscv64imac-unknown-none-elf]
 runner = "./qemu-wrapper.sh riscv64"

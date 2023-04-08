@@ -14,11 +14,13 @@ use core::arch::asm;
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
+use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
 
 fn generate_new_pid() -> usize {
-    todo!()
+    log!(Info, "Currently using single fixed pid 2.");
+    2
 }
 
 pub struct Process {
@@ -73,9 +75,31 @@ impl Process {
             _ => {},
         };
         self.populate_pagetable64(elf)?;
+        match self.map_kernel_text() {
+            Ok(_) => {},
+            Err(_) => {
+                panic!("Failed to map kernel text into process space!");
+            }
+        }
         self.saved_pc = elf.header.entry;
         self.state = ProcessState::Unstarted;
         Ok(())
+    }
+
+    // TODO think of error type
+    fn map_kernel_text(&mut self) -> Result<(), ()> {
+        // rx
+        let flags = user_process_flags(true, false, true);
+        match page_map(
+            self.pgtbl,
+            DRAM_BASE,
+            DRAM_BASE as *mut usize,
+            text_end().addr() - DRAM_BASE.addr(),
+            flags
+        ) {
+            Ok(_) => {Ok(())},
+            Err(_) => {Err(())},
+        }
     }
 
     /// Copies the LOAD segment memory layout from the elf to the
@@ -85,12 +109,20 @@ impl Process {
         "Varying ELF entry size expectations.");
 
         let num = elf.header.num_program_entries;
-        let ptr = elf.header.program_header_pos as *const ProgramHeaderSegment64;
+        let ptr = unsafe {
+            elf.source.add(elf.header.program_header_pos)
+                as *const ProgramHeaderSegment64
+        };
         for i in 0..num {
             let segment = unsafe { *ptr.add(i as usize) };
             if segment.seg_type != ProgramSegmentType::Load { continue; }
-            else if segment.vmem_addr < 0x1000 {return Err(ELFError::MappedZeroPage)}
+            else if segment.vmem_addr < 0x1000  { return Err(ELFError::MappedZeroPage) }
+            else if segment.vmem_addr >= text_start().addr() as u64 &&
+                segment.vmem_addr <= text_end().addr() as u64 {
+                    return Err(ELFError::MappedKernelText)
+                }
             else if segment.size_in_file != segment.size_in_memory {return Err(ELFError::InequalSizes)}
+            else if segment.alignment > 0x1000 {return Err(ELFError::ExcessiveAlignment)}
 
             let n_pages = (segment.size_in_memory + (0x1000 - 1)) / 0x1000;
             let pages = match request_phys_page(n_pages as usize) {
@@ -103,9 +135,9 @@ impl Process {
                             segment.size_in_file as usize);
             }
             let flags = user_process_flags(
-                segment.flags & PROG_SEG_READ != 0,
-                segment.flags & PROG_SEG_WRITE != 0,
-                segment.flags & PROG_SEG_EXEC != 0
+                (segment.flags as u16) & PROG_SEG_READ != 0,
+                (segment.flags as u16) & PROG_SEG_WRITE != 0,
+                (segment.flags as u16) & PROG_SEG_EXEC != 0
             );
 
             match page_map(
@@ -155,6 +187,18 @@ impl Process {
     }
 }
 
+
+pub fn test_process_spin() {
+    let bytes = include_bytes!("programs/spin/spin.elf");
+    let program = ELFProgram::new64(&bytes[0] as *const u8);
+    let mut proc = Process::new();
+
+    match proc.initialize64(&program) {
+        Ok(_) => {},
+        Err(e) => {panic!("Couldn't start process: {:?}", e)}
+    }
+    proc.start();
+}
 
 // TODO is there a better place for this stuff?
 /// Moving to `mod process`

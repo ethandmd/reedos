@@ -19,13 +19,16 @@ SECTIONS
   }
 
   /* should be < page, with alignment EXACTLY a page */
-  .trampoline : {
-    . = ALIGN(0x1000);
-    PROVIDE(_trampoline_start = .);
-    *(.trampoline)
-    . = ALIGN(0x1000);
-    PROVIDE(_trampoline_end = .);
-  }
+  /*
+   * .trampoline : {
+   *   . = ALIGN(0x1000);
+   *   PROVIDE(_trampoline_start = .);
+   *   *(.trampoline)
+   *   *(.trampoline.*)
+   *   . = ALIGN(0x1000);
+   *   PROVIDE(_trampoline_end = .);
+   * }
+   */
 
   PROVIDE(_global_pointer = .);
 
@@ -73,6 +76,11 @@ SECTIONS
    * uneeded?
    * PROVIDE(_end = .);
    */
-  PROVIDE(_trampoline_target = ORIGIN(RAM) + LENGTH(RAM) - 0x1000);
+  /*
+   * PROVIDE(_trampoline_target = ORIGIN(RAM) + LENGTH(RAM) - 0x1000);
+   */
+  /*
+   * PROVIDE(_trampoline_target = ORIGIN(RAM) + LENGTH(RAM) - 0x1000);
+   */
   PROVIDE(_memory_end = ORIGIN(RAM) + LENGTH(RAM));
 }
