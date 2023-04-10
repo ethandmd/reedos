@@ -155,7 +155,7 @@ pub fn user_process_flags(r: bool, w: bool, e: bool) -> usize {
 
 /// Helper for making flags for page_map for priviledged processes
 pub fn kernel_process_flags(r: bool, w: bool, e: bool) -> usize {
-    0 | 
+    0 |
     if r {PTE_READ} else {0} |
     if w {PTE_WRITE} else {0} |
     if e {PTE_EXEC} else {0}

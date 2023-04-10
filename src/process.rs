@@ -92,9 +92,9 @@ impl Process {
         let flags = user_process_flags(true, false, true);
         match page_map(
             self.pgtbl,
-            DRAM_BASE,
-            DRAM_BASE as *mut usize,
-            text_end().addr() - DRAM_BASE.addr(),
+            text_start(),
+            text_start(),
+            text_end().addr() - text_start().addr(),
             flags
         ) {
             Ok(_) => {Ok(())},

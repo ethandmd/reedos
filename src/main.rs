@@ -60,6 +60,7 @@ pub extern "C" fn _start() {
     let mut ms = read_mstatus();
     ms &= !MSTATUS_MPP_MASK;
     ms |= MSTATUS_MPP_S;
+    ms |= SSTATUS_SUM;          // allow sup access to user pages
     write_mstatus(ms);
 
     // Set machine exception prog counter to
@@ -120,9 +121,9 @@ fn main() -> ! {
 
         log!(Debug, "Testing basic processes...");
         process::test_process_spin();
-        
+
         log!(Info, "Completed all hart0 initialization and testing...");
-        
+
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();

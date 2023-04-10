@@ -17,6 +17,12 @@
         .global process_start_asm
 process_start_asm:
         csrw sepc, a0
+        li a0, 1
+        sll a0, a0, 63
+        ## top bit
+        srl a1, a1, 12
+        or a1, a1, a0
+        ## top bit mode and PPN
         sfence.vma x0, x0
         csrw satp, a1
         sfence.vma x0, x0
