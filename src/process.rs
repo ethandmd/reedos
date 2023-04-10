@@ -89,7 +89,7 @@ impl Process {
     // TODO think of error type
     fn map_kernel_text(&mut self) -> Result<(), ()> {
         // rx
-        let flags = user_process_flags(true, false, true);
+        let flags = kernel_process_flags(true, false, true);
         match page_map(
             self.pgtbl,
             text_start(),
