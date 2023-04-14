@@ -120,7 +120,7 @@ fn main() -> ! {
         log!(Debug, "Successful phys page extent allocation and freeing...");
 
         log!(Debug, "Testing basic processes...");
-        process::test_process_spin();
+        process::test_process_syscall_basic();
 
         log!(Info, "Completed all hart0 initialization and testing...");
 

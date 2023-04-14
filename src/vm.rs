@@ -8,6 +8,7 @@ use crate::hw::param::*;
 use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::OnceCell;
+use core::arch::asm;
 
 use global::Galloc;
 use palloc::*;
@@ -83,12 +84,29 @@ pub fn init() -> Result<(), PagePool> {
 
     // Map text, data, stacks, heap into kernel page table.
     match kpage_init() {
-        Ok(pt) => pt.write_satp(),
+        Ok(pt) => {
+            pt.write_satp();
+            finish_interrupt_stack_setup(pt);
+        },
         Err(_) => {
             panic!();
         }
     }
     Ok(())
+}
+
+// TODO error type?
+fn finish_interrupt_stack_setup(pt: ptable::PageTable) {
+    log!(Debug, "Writing kernel page table {:02X?}", pt.base);
+    unsafe {
+        asm!(
+            "csrrw sp, sscratch, sp",
+            "addi sp, sp, -8",
+            "sd {page_table}, (sp)",
+            "csrrw sp, sscratch, sp",
+            page_table = in(reg) pt.base as usize
+        );
+    }
 }
 
 /// A test designed to be used with GDB.

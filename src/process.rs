@@ -9,11 +9,11 @@ use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::size_of;
 use core::ptr::copy_nonoverlapping;
-use core::arch::asm;
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
+use crate::vm::VmError;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
@@ -21,6 +21,17 @@ use crate::file::elf64::*;
 fn generate_new_pid() -> usize {
     log!(Info, "Currently using single fixed pid 2.");
     2
+}
+
+fn return_used_pid(pid: usize) {
+    todo!("PID system unimplimented so far.");
+}
+
+// use hart local info to get the currently running process
+//
+// this is a *MOVE* of the process. Handle elsewhere
+fn get_running_process() -> Process {
+    todo!()
 }
 
 pub struct Process {
@@ -86,27 +97,123 @@ impl Process {
         Ok(())
     }
 
-    // TODO think of error type
-    fn map_kernel_text(&mut self) -> Result<(), ()> {
-        // rx
-        let flags = kernel_process_flags(true, false, true);
-        match page_map(
+    // TODO is this the right error type?
+    fn map_kernel_text(&mut self) -> Result<(), VmError> {
+        // This is currently a large copy of kpage_init with a few tweaks
+        page_map(
             self.pgtbl,
             text_start(),
             text_start(),
             text_end().addr() - text_start().addr(),
-            flags
-        ) {
-            Ok(_) => {Ok(())},
-            Err(_) => {Err(())},
+            kernel_process_flags(true, false, true)
+        )?;
+        log!(
+            Debug,
+            "Sucessfully mapped kernel text into process pgtable..."
+        );
+
+        page_map(
+            self.pgtbl,
+            text_end(),
+            text_end() as *mut usize,
+            rodata_end().addr() - text_end().addr(),
+            kernel_process_flags(true, false, false),
+        )?;
+        log!(
+            Debug,
+            "Succesfully mapped kernel rodata into process pgtable..."
+        );
+
+        page_map(
+            self.pgtbl,
+            rodata_end(),
+            rodata_end() as *mut usize,
+            data_end().addr() - rodata_end().addr(),
+            kernel_process_flags(true, true, false),
+        )?;
+        log!(
+            Debug,
+            "Succesfully mapped kernel data into process pgtable..."
+        );
+
+        // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
+        // problem.
+        let base = stacks_start();
+        for s in 0..NHART {
+            let stack = unsafe { base.byte_add(PAGE_SIZE * (1 + s * 3)) };
+            page_map(
+                self.pgtbl,
+                stack,
+                stack,
+                PAGE_SIZE * 2,
+                kernel_process_flags(true, true, false),
+            )?;
+            log!(
+                Debug,
+                "Succesfully mapped kernel stack {} into process pgtable...",
+                s
+            );
         }
+
+        // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
+        // problem.
+        let base = intstacks_start();
+        for i in 0..NHART {
+            let m_intstack = unsafe { base.byte_add(PAGE_SIZE * (1 + i * 4)) };
+            // Map hart i m-mode handler.
+            page_map(
+                self.pgtbl,
+                m_intstack,
+                m_intstack,
+                PAGE_SIZE,
+                kernel_process_flags(true, true, false),
+            )?;
+            // Map hart i s-mode handler
+            let s_intstack = unsafe { m_intstack.byte_add(PAGE_SIZE * 2) };
+            page_map(
+                self.pgtbl,
+                s_intstack,
+                s_intstack,
+                PAGE_SIZE,
+                kernel_process_flags(true, true, false),
+            )?;
+            log!(
+                Debug,
+                "Succesfully mapped interrupt stack for hart {} into process pgtable...",
+                i
+            );
+        }
+
+        page_map(
+            self.pgtbl,
+            bss_start(),
+            bss_start(),
+            bss_end().addr() - bss_start().addr(),
+            kernel_process_flags(true, true, false),
+        )?;
+        log!(Debug, "Succesfully mapped kernel bss into process...");
+
+        page_map(
+            self.pgtbl,
+            bss_end(),
+            bss_end(),
+            memory_end().addr() - bss_end().addr(),
+            kernel_process_flags(true, true, false),
+        )?;
+        log!(Debug, "Succesfully mapped kernel heap into process...");
+
+        Ok(())
     }
 
+
+    // TODO better error type here?
     /// Copies the LOAD segment memory layout from the elf to the
     /// program. This is not the only initialization step.
+    ///
+    /// This also setups up the program stack and sets saved_sp
     fn populate_pagetable64(&mut self, elf: &ELFProgram) -> Result<(), ELFError>{
         assert!(elf.header.program_entry_size as usize == size_of::<ProgramHeaderSegment64>(),
-        "Varying ELF entry size expectations.");
+                "Varying ELF entry size expectations.");
 
         let num = elf.header.num_program_entries;
         let ptr = unsafe {
@@ -131,8 +238,8 @@ impl Process {
             };
             unsafe {
                 copy_nonoverlapping(elf.source.add(segment.file_offset as usize),
-                            pages.start() as *mut u8,
-                            segment.size_in_file as usize);
+                                    pages.start() as *mut u8,
+                                    segment.size_in_file as usize);
             }
             let flags = user_process_flags(
                 (segment.flags as u16) & PROG_SEG_READ != 0,
@@ -152,9 +259,38 @@ impl Process {
             }
             self.phys_pages.push_back(pages);
         }
+
+        // TODO what does process heap look like? depends on our syscalls I guess?
+        // We would map it here if we had any
+
+        // map the process stack. They will get 2 pages for now
+        const STACK_PAGES: usize = 2;
+        let stack_pages = match request_phys_page(STACK_PAGES) {
+            Ok(p) => {p},
+            Err(_) => {
+                return Err(ELFError::FailedAlloc);
+            }
+        };
+        // TODO guard page? you'll get a page fault anyway?
+        let process_stack_location = unsafe {
+            text_start().sub(0x1000 * STACK_PAGES)
+        };
+        // under the kernel text
+        match page_map(
+            self.pgtbl,
+            VirtAddress::from(process_stack_location),
+            PhysAddress::from(stack_pages.start()),
+            STACK_PAGES,
+            user_process_flags(true, true, false)
+        ) {
+            Ok(_) =>{},
+            Err(_) => {return Err(ELFError::FailedMap)}
+        }
+        self.saved_sp = stack_pages.end() as usize;
+        self.phys_pages.push_back(stack_pages);
+
         Ok(())
     }
-
 
     /// This is a (kind of) context switch
     ///
@@ -169,26 +305,69 @@ impl Process {
         }
         self.state = ProcessState::Running;
 
-        extern "C" {pub fn process_start_asm(pc: usize, pgtbl: usize) -> !;}
+        extern "C" {pub fn process_start_asm(pc: usize, pgtbl: usize, sp: usize) -> !;}
 
         unsafe {
             // we can't use PageTable.write_satp here becuase this is
             // not mapped into the process pagetable and it shouldn't
             // be. We want to do that later in the asm.
-            // process_start_asm(self.saved_pc, self.pgtbl.base as usize);
-            asm!("mv a0, {saved_pc}",
-                 "mv a1, {base}",
-                 ".extern process_start_asm",
-                 "j process_start_asm",
-                 saved_pc = in(reg) self.saved_pc,
-                 base = in(reg) self.pgtbl.base);
+            //
+            // relies on args in a0, a1, a2 in order
+            process_start_asm(self.saved_pc, self.pgtbl.base as usize, self.saved_sp);
         }
-        panic!("Failed to jump into process!");
+    }
+
+    /// This is our main context switch. Back into a running process
+    /// from kernel space
+    ///
+    /// See above comment about data movement of a process struct
+    pub fn resume(&mut self) -> ! {
+        match self.state {
+            ProcessState::Ready => {},
+            _ => {
+                panic!("Attempted to resume a process that was not marked as Ready.")
+            },
+        }
+        self.state = ProcessState::Running;
+
+        extern "C" {pub fn process_resume_asm(pc: usize, pgtbl: usize, sp: usize) -> !;}
+        unsafe {
+            process_resume_asm(self.saved_pc, self.pgtbl.base as usize, self.saved_sp);
+        }
     }
 }
 
+impl Drop for Process {
+    fn drop(&mut self) {
+        match self.state {
+            ProcessState::Running => {
+                panic!("Tried to drop a running process!");
+            }
+            _ => {}
+        }
+        return_used_pid(self.id);
+        // dropping the phys pages vector will automatically clean
+        // those up
+    }
+}
 
-pub fn test_process_spin() {
+#[no_mangle]
+pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
+    let mut proc = get_running_process();
+    proc.saved_pc = pc;
+    proc.saved_sp = sp;
+    match cause {
+        0 => {
+            proc.state = ProcessState::Ready;
+        },
+        _ => {
+            panic!("Unknown reason for process swap.");
+        }
+    }
+    todo!("Move the process back onto the process list, or shared container");
+}
+
+pub fn _test_process_spin() {
     let bytes = include_bytes!("programs/spin/spin.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
     let mut proc = Process::new();
@@ -199,6 +378,19 @@ pub fn test_process_spin() {
     }
     proc.start();
 }
+
+pub fn test_process_syscall_basic() {
+    let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
+    let program = ELFProgram::new64(&bytes[0] as *const u8);
+    let mut proc = Process::new();
+
+    match proc.initialize64(&program) {
+        Ok(_) => {},
+        Err(e) => {panic!("Couldn't start process: {:?}", e)}
+    }
+    proc.start();
+}
+
 
 // TODO is there a better place for this stuff?
 /// Moving to `mod process`
