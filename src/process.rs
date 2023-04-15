@@ -7,8 +7,8 @@
 use alloc::boxed::Box;
 use alloc::collections::vec_deque::*;
 use core::assert;
-use core::mem::size_of;
-use core::ptr::copy_nonoverlapping;
+use core::mem::{size_of, MaybeUninit};
+use core::ptr::{copy_nonoverlapping, null_mut};
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
@@ -17,30 +17,77 @@ use crate::vm::VmError;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
+use crate::lock::mutex::Mutex;
+use crate::hw::hartlocal::*;
 
-fn generate_new_pid() -> usize {
-    log!(Info, "Currently using single fixed pid 2.");
-    2
+
+mod pid;
+use crate::process::pid::*;
+// We want to be able to use pid stuff, but nobody above us needs it
+
+// We need places to hold processes that are not running, and those
+// that are running at a minimum. We probably want to actually have
+// more gradation than that later.
+
+/// For now there is a single locked queue of owned Processes, and you
+/// grab it and iterate
+static mut PROCESS_QUEUE: MaybeUninit<Mutex<VecDeque<Process>>> = MaybeUninit::uninit();
+
+// /// Place to put the current process while running it. Noteably the
+// /// hart *cannot* own the process in the rust sense, because the
+// /// process is outside the scope of rust, and so we want to move it to
+// /// a known location that won't get dropped when we enter the process
+// /// through the never returning calls
+// static mut HART_RUNNING_SLOTS: MaybeUninit<[Process; NHART]> = MaybeUninit::uninit();
+// unsafe impl Sync for Process {}
+// // ^ note that we need this because this *has* to be global, there is
+// // no local place to put it inside the rust framework, and trying to
+// // move it onto the sscratch stack or something is asking for trouble
+// //
+// // This should *NOT* be taken to imply that you can actually use
+// // processes as if they are Sync. This is a BIG breach of rust
+// // compiler etiquette and needs to be addressed in the future,
+// // probably by just making Process Sync for real. Currently that is
+// // blocked because the page table reference is a *mut usize, which by
+// // definition is not Sync. We are making Process Sync here because if
+// // you have multiple harts working on the same process in a way that
+// // involves page table data races, tehn you have far bigger
+// // problems. The safety and organization of processes is handled at a
+// // higher level than the Process struct itself.
+// //
+// // If someone smarter than myself wants to come and fix this, go for
+// // it, but good luck
+
+/// Global init for all process related stuff.
+pub fn init_process_structure() {
+    hartlocal_info_interrupt_stack_init();
+
+    init_pid_subsystem();
+    unsafe {
+        PROCESS_QUEUE.write(Mutex::new(VecDeque::new()));
+    }
 }
 
-fn return_used_pid(pid: usize) {
-    todo!("PID system unimplimented so far.");
-}
+
+
 
 // use hart local info to get the currently running process
 //
 // this is a *MOVE* of the process. Handle elsewhere
 fn get_running_process() -> Process {
-    todo!()
+    restore_gp_info64().current_process
 }
 
+/// A process. The there is a real possiblity of this being largly
+/// uninitialized, so check the state always
 pub struct Process {
-    saved_pc: usize,
-    saved_sp: usize,
-    id: usize,
-    state: ProcessState,
-    pgtbl: PageTable,
-    phys_pages: VecDeque<PhysPageExtent>, // vec to avoid Ord requirement
+    saved_pc: usize,            // uninit with 0
+    saved_sp: usize,            // uninit with 0
+    id: usize,                  // uninit with 0
+    state: ProcessState,        // use uninit state
+    pgtbl: PageTable,                     // uninizalied with null
+    phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
+    // ^ hopefully it's clear how this is uninit
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
@@ -63,28 +110,40 @@ pub enum ProcessState {
 }
 
 impl Process {
-    pub fn new() -> Self {
-        let pt = request_phys_page(1)
-            .expect("Could not allocate a page table for a new process.");
-        let mut out = Self {
-            id: generate_new_pid(),
+    /// Construct a new process. Notably does not allocate anything or
+    /// mean anything until you initialize it.
+    pub fn new_uninit() -> Self {
+        let out = Self {
+            id: 0,
             state: ProcessState::Uninitialized,
-            pgtbl: PageTable::new(pt.start()),
-            phys_pages: VecDeque::default(),
+            pgtbl: PageTable::new(null_mut()),
+            phys_pages: MaybeUninit::uninit(),
             saved_pc: 0,
             saved_sp: 0,
         };
-        out.phys_pages.push_back(pt);
-        // ^ tranfers ownership of page table page to process struct
         out
     }
 
     pub fn initialize64(&mut self, elf: &ELFProgram) -> Result<(), ELFError> {
-        // Doesn't check for uninitialized state so you can do a write over of an existing process
+        // Doesn't assert uninitialized state so you can do a write over of an existing process
+
         match self.state {
-            ProcessState::Running => {panic!("Tried to re-init a running process!")},
+            ProcessState::Uninitialized => {
+                self.id = generate_new_pid();
+                let pt = request_phys_page(1)
+                    .expect("Could not allocate a page table for a new process.");
+                self.pgtbl = PageTable::new(pt.start());
+                self.phys_pages.write(VecDeque::new());
+                unsafe {
+                    self.phys_pages.assume_init_mut().push_back(pt);
+                }
+            },
+            ProcessState::Running => {
+                panic!("Tried to re-initialize a running process!");
+            },
             _ => {},
-        };
+        }
+
         self.populate_pagetable64(elf)?;
         match self.map_kernel_text() {
             Ok(_) => {},
@@ -257,7 +316,9 @@ impl Process {
                 Ok(_) => {},
                 Err(_) => {return Err(ELFError::FailedMap)}
             }
-            self.phys_pages.push_back(pages);
+            unsafe {
+                self.phys_pages.assume_init_mut().push_back(pages);
+            }
         }
 
         // TODO what does process heap look like? depends on our syscalls I guess?
@@ -287,18 +348,29 @@ impl Process {
             Err(_) => {return Err(ELFError::FailedMap)}
         }
         self.saved_sp = stack_pages.end() as usize;
-        self.phys_pages.push_back(stack_pages);
+        unsafe {
+            self.phys_pages.assume_init_mut().push_back(stack_pages);
+        }
 
         Ok(())
     }
 
     /// This is a (kind of) context switch
     ///
-    /// This intentionally does not consume the process, despite
-    /// conceptually making it unavailable for other actors. That move
-    /// out of a shared scope, if needed, should happen before this
-    /// call.
-    pub fn start(&mut self) -> ! {
+    /// This consumes the process from the rust perspective, but it is
+    /// actually preserved elsewhere (gp info) and restored. This is
+    /// because we need to preserve info across entering and exiting
+    /// the process, but no non-global rust location does that, and we
+    /// can't use a global array or anything like htat because we need
+    /// to have each hart's process's lifetime be independent, and
+    /// further, it doesn't make sense to have Process be Sync when it
+    /// is not.
+    ///
+    /// TODO consider if there is a non-gp solution involing global
+    /// pointers to heap allocated locations per hart. That is
+    /// conceptually what is going on, but I still think we would have
+    /// Sync/Send issues
+    pub fn start(mut self) -> ! {
         match self.state {
             ProcessState::Unstarted => {},
             _ => {panic!("Attempted to start an already started program!")},
@@ -307,13 +379,19 @@ impl Process {
 
         extern "C" {pub fn process_start_asm(pc: usize, pgtbl: usize, sp: usize) -> !;}
 
+        let saved_pc = self.saved_pc;
+        let pgtbl_base = self.pgtbl.base as usize;
+        let saved_sp = self.saved_sp;
+        let gpi = GPInfo::new(self);
+        save_gp_info64(gpi);
+
         unsafe {
             // we can't use PageTable.write_satp here becuase this is
             // not mapped into the process pagetable and it shouldn't
             // be. We want to do that later in the asm.
             //
             // relies on args in a0, a1, a2 in order
-            process_start_asm(self.saved_pc, self.pgtbl.base as usize, self.saved_sp);
+            process_start_asm(saved_pc, pgtbl_base, saved_sp);
         }
     }
 
@@ -321,7 +399,7 @@ impl Process {
     /// from kernel space
     ///
     /// See above comment about data movement of a process struct
-    pub fn resume(&mut self) -> ! {
+    pub fn resume(mut self) -> ! {
         match self.state {
             ProcessState::Ready => {},
             _ => {
@@ -331,8 +409,15 @@ impl Process {
         self.state = ProcessState::Running;
 
         extern "C" {pub fn process_resume_asm(pc: usize, pgtbl: usize, sp: usize) -> !;}
+
+        let saved_pc = self.saved_pc;
+        let pgtbl_base = self.pgtbl.base as usize;
+        let saved_sp = self.saved_sp;
+        let gpi = GPInfo::new(self);
+        save_gp_info64(gpi);
+
         unsafe {
-            process_resume_asm(self.saved_pc, self.pgtbl.base as usize, self.saved_sp);
+            process_resume_asm(saved_pc, pgtbl_base, saved_sp);
         }
     }
 }
@@ -354,7 +439,8 @@ impl Drop for Process {
 #[no_mangle]
 pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
     let mut proc = get_running_process();
-    proc.saved_pc = pc;
+    proc.saved_pc = pc + 4;
+    // ^ ecall doesn't automatically increment pc
     proc.saved_sp = sp;
     match cause {
         0 => {
@@ -364,13 +450,15 @@ pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
             panic!("Unknown reason for process swap.");
         }
     }
-    todo!("Move the process back onto the process list, or shared container");
+
+    log!(Debug, "Process yielded! Testing restoration");
+    proc.resume();
 }
 
 pub fn _test_process_spin() {
     let bytes = include_bytes!("programs/spin/spin.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
-    let mut proc = Process::new();
+    let mut proc = Process::new_uninit();
 
     match proc.initialize64(&program) {
         Ok(_) => {},
@@ -382,7 +470,7 @@ pub fn _test_process_spin() {
 pub fn test_process_syscall_basic() {
     let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
-    let mut proc = Process::new();
+    let mut proc = Process::new_uninit();
 
     match proc.initialize64(&program) {
         Ok(_) => {},
