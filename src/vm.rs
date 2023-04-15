@@ -86,7 +86,7 @@ pub fn init() -> Result<(), PagePool> {
     match kpage_init() {
         Ok(pt) => {
             pt.write_satp();
-            finish_interrupt_stack_setup(pt);
+            pagetable_interrupt_stack_setup(pt);
         },
         Err(_) => {
             panic!();
@@ -96,7 +96,7 @@ pub fn init() -> Result<(), PagePool> {
 }
 
 // TODO error type?
-fn finish_interrupt_stack_setup(pt: ptable::PageTable) {
+fn pagetable_interrupt_stack_setup(pt: ptable::PageTable) {
     log!(Debug, "Writing kernel page table {:02X?}", pt.base);
     unsafe {
         asm!(
