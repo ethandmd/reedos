@@ -31,7 +31,7 @@ pub type SATPAddress = usize;
 #[derive(Copy, Clone)]
 #[repr(C)]
 pub struct PageTable {
-    base: PhysAddress, // Page Table located at base address.
+    pub base: PhysAddress, // Page Table located at base address.
 }
 
 #[inline(always)]
@@ -96,6 +96,12 @@ impl From<PTEntry> for PageTable {
 }
 
 impl PageTable {
+    pub fn new(addr: *mut usize) -> Self {
+        Self {
+            base: addr as PhysAddress,
+        }
+    }
+
     fn index_mut(&self, idx: usize) -> *mut PTEntry {
         assert!(idx < PTE_TOP);
         unsafe { get_phy_offset(self.base, idx) }
@@ -139,9 +145,25 @@ unsafe fn walk(pt: PageTable, va: VirtAddress, alloc_new: bool) -> Result<*mut P
     Ok(table.index_mut(idx))
 }
 
+/// Helper for making flags for page_map for unpriviledged processes
+pub fn user_process_flags(r: bool, w: bool, e: bool) -> usize {
+    PTE_USER |
+    if r {PTE_READ} else {0} |
+    if w {PTE_WRITE} else {0} |
+    if e {PTE_EXEC} else {0}
+}
+
+/// Helper for making flags for page_map for priviledged processes
+pub fn kernel_process_flags(r: bool, w: bool, e: bool) -> usize {
+    0 |
+    if r {PTE_READ} else {0} |
+    if w {PTE_WRITE} else {0} |
+    if e {PTE_EXEC} else {0}
+}
+
 /// Maps some number of pages into the VM given by pt of byte length
 /// size.
-fn page_map(
+pub fn page_map(
     pt: PageTable,
     va: VirtAddress,
     pa: PhysAddress,
@@ -213,6 +235,29 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         Debug,
         "Succesfully mapped kernel text into kernel pgtable..."
     );
+
+    // assert!(trampoline_end() as usize - trampoline_start() as usize == 0x1000,
+    //         "Trampoline page is not a page!");
+    // // map once on top of pa
+    // page_map(
+    //     kpage_table,
+    //     trampoline_start(),
+    //     trampoline_start(),
+    //     0x1000,                 // checked above
+    //     PTE_READ | PTE_EXEC,
+    // )?;
+    // // map again as top page
+    // page_map(
+    //     kpage_table,
+    //     trampoline_target(),
+    //     trampoline_start(),
+    //     0x1000,                 // checked above
+    //     PTE_READ | PTE_EXEC,
+    // )?;
+    // log!(
+    //     Debug,
+    //     "Succesfully mapped trampoline page into kernel pgtable..."
+    // );
 
     page_map(
         kpage_table,
@@ -299,7 +344,7 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         kpage_table,
         bss_end(),
         bss_end(),
-        dram_end().addr() - bss_end().addr(),
+        memory_end().addr() - bss_end().addr(),
         PTE_READ | PTE_WRITE,
     )?;
     log!(Debug, "Succesfully mapped kernel heap...");

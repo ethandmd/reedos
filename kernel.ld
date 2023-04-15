@@ -11,26 +11,40 @@ SECTIONS
   . = ORIGIN(RAM);
 
   .text : {
+    PROVIDE(_text_start = .);
     *(.text.entry)
     *(.text .text.*)
     . = ALIGN(0x1000);
     PROVIDE(_text_end = .);
-    PROVIDE(_etext = .);
   }
+
+  /* should be < page, with alignment EXACTLY a page */
+  /*
+   * .trampoline : {
+   *   . = ALIGN(0x1000);
+   *   PROVIDE(_trampoline_start = .);
+   *   *(.trampoline)
+   *   *(.trampoline.*)
+   *   . = ALIGN(0x1000);
+   *   PROVIDE(_trampoline_end = .);
+   * }
+   */
 
   PROVIDE(_global_pointer = .);
 
   .rodata : {
+    PROVIDE(_rodata_start = .);
     *(.srodata .srodata.*)
     *(.rodata .rodata.*)
     . = ALIGN(0x1000);
-    PROVIDE(_roedata = .);
+    PROVIDE(_rodata_end = .);
   }
   .data : {
+    PROVIDE(_data_start = .);
     *(.sdata .sdata.*)
     *(.data .data.*)
     . = ALIGN(0x1000);
-    PROVIDE(_edata = .);
+    PROVIDE(_data_end = .);
   }
 
   /* lower guard page included in above */
@@ -58,6 +72,15 @@ SECTIONS
     PROVIDE(_bss_end = .);
   }
 
-  PROVIDE(_end = .);
+  /*
+   * uneeded?
+   * PROVIDE(_end = .);
+   */
+  /*
+   * PROVIDE(_trampoline_target = ORIGIN(RAM) + LENGTH(RAM) - 0x1000);
+   */
+  /*
+   * PROVIDE(_trampoline_target = ORIGIN(RAM) + LENGTH(RAM) - 0x1000);
+   */
   PROVIDE(_memory_end = ORIGIN(RAM) + LENGTH(RAM));
 }

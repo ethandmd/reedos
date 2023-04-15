@@ -20,6 +20,8 @@ pub mod hw;
 pub mod lock;
 pub mod trap;
 pub mod vm;
+pub mod process;
+pub mod file;
 
 use crate::device::uart;
 use crate::hw::param;
@@ -58,6 +60,7 @@ pub extern "C" fn _start() {
     let mut ms = read_mstatus();
     ms &= !MSTATUS_MPP_MASK;
     ms |= MSTATUS_MPP_S;
+    ms |= SSTATUS_SUM;          // allow sup access to user pages
     write_mstatus(ms);
 
     // Set machine exception prog counter to
@@ -115,7 +118,12 @@ fn main() -> ! {
         log!(Debug, "Testing phys page extent allocation and freeing...");
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
+
+        log!(Debug, "Testing basic processes...");
+        process::test_process_spin();
+
         log!(Info, "Completed all hart0 initialization and testing...");
+
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
