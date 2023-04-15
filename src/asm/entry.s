@@ -16,8 +16,14 @@ _entry:
         .option push
         .option norelax
         ## Linker position data relative to gp
-        .extern _global_pointer
-        la gp, _global_pointer
+        ## See linkerscript for details on why we don't need this
+        ## .extern _global_pointer
+        ## la gp, _global_pointer
+        ##
+        ## Instead we are using gp while in the kernel to point to the
+        ## hart local data, which for now will be the process they are
+        ## running (or an uninitialized one)
+
         .option pop
         ## Set up stack per of hart ids according to linker script
 
