@@ -8,6 +8,7 @@
 #![feature(strict_provenance)]
 #![feature(once_cell)]
 #![feature(unsized_fn_params)]
+#![feature(box_into_inner)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 extern crate alloc;
@@ -119,8 +120,10 @@ fn main() -> ! {
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
 
-        log!(Debug, "Testing basic processes...");
-        process::test_process_spin();
+        process::init_process_structure();
+        log!(Debug, "Successfuly initialized the process system...");
+        process::test_process_syscall_basic();
+        // ^ this won't exit currently
 
         log!(Info, "Completed all hart0 initialization and testing...");
 

@@ -30,7 +30,10 @@ SECTIONS
    * }
    */
 
-  PROVIDE(_global_pointer = .);
+  /*
+   * Only required when using a dynamically linked ELF, which we are not
+   * PROVIDE(_global_pointer = .);
+   */
 
   .rodata : {
     PROVIDE(_rodata_start = .);

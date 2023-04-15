@@ -1,6 +1,7 @@
 //! Target-hardware parameters and utilities.
 pub mod param;
 pub mod riscv;
+pub mod hartlocal;
 
 use crate::device::clint;
 use crate::trap;

@@ -165,6 +165,9 @@ macro_rules! unsupported {
     }
 }
 
+// TODO consider rolling together a bunch of these overlapping error
+// types as nested enums, if that is a thing, or otherwise not reuse
+// things like "Failed alloc" in multiple places
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum ELFError {
