@@ -46,9 +46,29 @@ __strapvec:
         j scall_asm
 
 ### handling a trap that was not a U mode syscall
+###
+### This is on the interrupt stack
 regular_strap:
         ld t0, -8(sp)
         save_gp_regs
+
+        ## load kernel page table
+        ld t1, 264(sp)          #256 + 8
+
+        li a0, 1
+        sll a0, a0, 63
+        ## top bit
+        srl t1, t1, 12
+        or t1, t1, a0
+        ## top bit mode and PPN
+
+        sfence.vma x0, x0
+        csrw satp, t1
+        sfence.vma x0, x0
+        ## now in kernel space
+
+        ## get gp back to restore more info from later
+        ld gp, 256(sp)
 
         .extern s_handler
         call s_handler
