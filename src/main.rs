@@ -9,6 +9,7 @@
 #![feature(once_cell)]
 #![feature(unsized_fn_params)]
 #![feature(box_into_inner)]
+#![feature(never_type)]
 #![allow(dead_code)]
 use core::panic::PanicInfo;
 extern crate alloc;

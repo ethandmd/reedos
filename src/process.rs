@@ -17,65 +17,48 @@ use crate::vm::VmError;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
-use crate::lock::mutex::Mutex;
 use crate::hw::hartlocal::*;
+use crate::lock::mutex::Mutex;
 
 
 mod pid;
 use crate::process::pid::*;
 // We want to be able to use pid stuff, but nobody above us needs it
 
-// We need places to hold processes that are not running, and those
-// that are running at a minimum. We probably want to actually have
-// more gradation than that later.
+mod scheduler;
+use crate::process::scheduler::ProcessQueue;
 
-/// For now there is a single locked queue of owned Processes, and you
-/// grab it and iterate
-static mut PROCESS_QUEUE: MaybeUninit<Mutex<VecDeque<Process>>> = MaybeUninit::uninit();
+// for now we wil be using a single locked round robin queue
+static mut QUEUE: MaybeUninit<Mutex<ProcessQueue>> = MaybeUninit::uninit();
 
-// /// Place to put the current process while running it. Noteably the
-// /// hart *cannot* own the process in the rust sense, because the
-// /// process is outside the scope of rust, and so we want to move it to
-// /// a known location that won't get dropped when we enter the process
-// /// through the never returning calls
-// static mut HART_RUNNING_SLOTS: MaybeUninit<[Process; NHART]> = MaybeUninit::uninit();
-// unsafe impl Sync for Process {}
-// // ^ note that we need this because this *has* to be global, there is
-// // no local place to put it inside the rust framework, and trying to
-// // move it onto the sscratch stack or something is asking for trouble
-// //
-// // This should *NOT* be taken to imply that you can actually use
-// // processes as if they are Sync. This is a BIG breach of rust
-// // compiler etiquette and needs to be addressed in the future,
-// // probably by just making Process Sync for real. Currently that is
-// // blocked because the page table reference is a *mut usize, which by
-// // definition is not Sync. We are making Process Sync here because if
-// // you have multiple harts working on the same process in a way that
-// // involves page table data races, tehn you have far bigger
-// // problems. The safety and organization of processes is handled at a
-// // higher level than the Process struct itself.
-// //
-// // If someone smarter than myself wants to come and fix this, go for
-// // it, but good luck
 
 /// Global init for all process related stuff.
 pub fn init_process_structure() {
     hartlocal_info_interrupt_stack_init();
-
     init_pid_subsystem();
     unsafe {
-        PROCESS_QUEUE.write(Mutex::new(VecDeque::new()));
+        QUEUE.write(Mutex::new(ProcessQueue::new()));
     }
 }
-
-
-
 
 // use hart local info to get the currently running process
 //
 // this is a *MOVE* of the process. Handle elsewhere
 fn get_running_process() -> Process {
     restore_gp_info64().current_process
+}
+
+#[derive(Debug)]
+pub enum ProcessState {
+    Uninitialized,              // do not attempt to run
+    Unstarted,                  // do not attempt to restore regs
+    Ready,                      // can run, restore args
+    Running,                    // is running, don't use elsewhere
+    // ^ is because ownership alone is risky to ensure safety accross
+    // context switches
+    Wait,                       // blocked on on something
+    Sleep,                      // out of the running for a bit
+    Dead,                       // do not run (needed?)
 }
 
 /// A process. The there is a real possiblity of this being largly
@@ -89,24 +72,11 @@ pub struct Process {
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
 
+    // sleep_time: usize           // uninit with 0, only valid with sleep state
+
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
 
-    // unsused, possibly not needed ever
-    // trapframe: TrapFrame,
-    // ctx_regs: HartContext,
-}
-
-pub enum ProcessState {
-    Uninitialized,              // do not attempt to run
-    Unstarted,                  // do not attempt to restore regs
-    Ready,                      // can run, restore args
-    Running,                    // is running, don't use elsewhere
-    // ^ is because ownership alone is risky to ensure safety accross
-    // context switches
-    Wait,                       // blocked on on something
-    Sleep,                      // out of the running for a bit
-    Dead,                       // do not run (needed?)
 }
 
 impl Process {
@@ -437,7 +407,7 @@ impl Drop for Process {
 }
 
 #[no_mangle]
-pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
+pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) -> ! {
     let mut proc = get_running_process();
     proc.saved_pc = pc + 4;
     // ^ ecall doesn't automatically increment pc
@@ -451,9 +421,47 @@ pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
         }
     }
 
-    log!(Debug, "Process yielded! Testing restoration");
-    proc.resume();
+    log!(Debug, "Process {} yielded.", proc.id);
+
+
+    // This is careful code to avoid holding the lock when we enter
+    // the process, as that would lead to an infinite lock
+    let next;
+    unsafe {
+        let mut locked = QUEUE.assume_init_mut().lock();
+        locked.insert(proc);
+        next = locked.get_ready_process();
+    }
+    match next.state {
+        ProcessState::Ready => {next.resume()},
+        ProcessState::Unstarted => {next.start()},
+        _ => {panic!("Bad process state from scheduler!")}
+    }
 }
+
+#[no_mangle]
+pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
+    let proc = get_running_process();
+    log!(Debug, "Process {} exited with code {}.", proc.id, exit_code);
+    drop(proc);
+    // ^ ensure that the never returning scheduler call doesn't extend
+    // the life of the process
+
+
+    // This is careful code to avoid holding the lock when we enter
+    // the process, as that would lead to an infinite lock
+    let next;
+    unsafe {
+        let mut locked = QUEUE.assume_init_mut().lock();
+        next = locked.get_ready_process();
+    }
+    match next.state {
+        ProcessState::Ready => {next.resume()},
+        ProcessState::Unstarted => {next.start()},
+        _ => {panic!("Bad process state from scheduler!")}
+    }
+}
+
 
 pub fn _test_process_spin() {
     let bytes = include_bytes!("programs/spin/spin.elf");

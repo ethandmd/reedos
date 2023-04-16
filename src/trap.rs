@@ -69,9 +69,7 @@ pub extern "C" fn s_handler() {
 /// for calling convention info.
 ///
 /// Currently this is run in supervisior mode, on the program stack,
-/// executing the kernel text. this means the non-static globals are
-/// not available, as is any piece of memory not mapped in either the
-/// program or in kernel text.
+/// executing the kernel text.
 ///
 /// This may change in the future.
 #[no_mangle]
