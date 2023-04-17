@@ -11,6 +11,7 @@
 #![feature(box_into_inner)]
 #![feature(never_type)]
 #![allow(dead_code)]
+use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 extern crate alloc;
 
@@ -25,9 +26,19 @@ pub mod vm;
 pub mod process;
 pub mod file;
 
+
+use crate::hw::hartlocal;
+use crate::vm::ptable::PageTable;
 use crate::device::uart;
 use crate::hw::param;
 use crate::hw::riscv::*;
+use crate::lock::condition::ConditionVar;
+
+// sync init accross harts
+static mut GLOBAL_INIT_FLAG: MaybeUninit<ConditionVar> = MaybeUninit::uninit();
+// pass the initial kernel page table to non-zero id harts. This is
+// not how it is accessed after inialization
+static mut KERNEL_PAGE_TABLE: MaybeUninit<PageTable> = MaybeUninit::uninit();
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -103,13 +114,29 @@ pub extern "C" fn _start() {
 fn main() -> ! {
     // We only bootstrap on hart0.
     let id = read_tp();
+
+    unsafe {
+        // this happens on all harts, but they are all writing the same thing
+        GLOBAL_INIT_FLAG.write(ConditionVar::new(0));
+    }
+
     if id == 0 {
-        uart::Uart::init();
+        uart::init();
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
         log!(Info, "Finished trap init...");
-        let _ = vm::init();
+        match vm::global_init() {
+            Ok(pt) => {
+                unsafe {
+                    KERNEL_PAGE_TABLE.write(pt);
+                    vm::local_init(KERNEL_PAGE_TABLE.assume_init_ref());
+                }
+            },
+            Err(_) => {
+                panic!("Failed VM initialization!");
+            }
+        }
         log!(Info, "Initialized the kernel page table...");
         unsafe {
             log!(Debug, "Testing page allocation and freeing...");
@@ -122,16 +149,29 @@ fn main() -> ! {
         log!(Debug, "Successful phys page extent allocation and freeing...");
 
         process::init_process_structure();
+        hartlocal::hartlocal_info_interrupt_stack_init();
         log!(Debug, "Successfuly initialized the process system...");
-        process::test_process_syscall_basic();
-        // ^ this won't exit currently
-
         log!(Info, "Completed all hart0 initialization and testing...");
 
+        unsafe {
+            // release the waiting harts
+            GLOBAL_INIT_FLAG.assume_init_mut().update(1);
+        }
     } else {
-        //Interrupt other harts to init kpgtable.
+        // Do the init that can be independent and without global deps.
         trap::init();
+
+        unsafe {
+            // spin until the global init is done
+            GLOBAL_INIT_FLAG.assume_init_ref().spin_wait(1);
+            vm::local_init(KERNEL_PAGE_TABLE.assume_init_ref());
+        }
+        hartlocal::hartlocal_info_interrupt_stack_init();
+        log!(Info, "Completed all hart{} local initialization", read_tp());
     }
 
-    loop {}
+    // we want to test multiple processes with multiple harts
+    process::test_process_syscall_basic();
+
+    panic!("Reached the end of kernel main! Did the root process not start?");
 }

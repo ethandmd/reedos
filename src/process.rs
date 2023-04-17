@@ -4,7 +4,6 @@
 // extern crate alloc;
 
 // use alloc::boxed::Box;
-use alloc::boxed::Box;
 use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
@@ -14,6 +13,7 @@ use core::ptr::{copy_nonoverlapping, null_mut};
 // use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
 use crate::vm::VmError;
+use crate::hw::riscv::read_tp;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
@@ -32,9 +32,9 @@ use crate::process::scheduler::ProcessQueue;
 static mut QUEUE: MaybeUninit<Mutex<ProcessQueue>> = MaybeUninit::uninit();
 
 
-/// Global init for all process related stuff.
+/// Global init for all process related stuff. Not exaustive, also
+/// need hartlocal_info_interrupt_stack_init
 pub fn init_process_structure() {
-    hartlocal_info_interrupt_stack_init();
     init_pid_subsystem();
     unsafe {
         QUEUE.write(Mutex::new(ProcessQueue::new()));
@@ -421,14 +421,14 @@ pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) -> ! {
         }
     }
 
-    log!(Debug, "Process {} yielded.", proc.id);
+    log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
 
 
     // This is careful code to avoid holding the lock when we enter
     // the process, as that would lead to an infinite lock
     let next;
     unsafe {
-        let mut locked = QUEUE.assume_init_mut().lock();
+        let mut locked = QUEUE.assume_init_ref().lock();
         locked.insert(proc);
         next = locked.get_ready_process();
     }
@@ -452,7 +452,7 @@ pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
     // the process, as that would lead to an infinite lock
     let next;
     unsafe {
-        let mut locked = QUEUE.assume_init_mut().lock();
+        let mut locked = QUEUE.assume_init_ref().lock();
         next = locked.get_ready_process();
     }
     match next.state {
@@ -489,17 +489,17 @@ pub fn test_process_syscall_basic() {
 
 
 // TODO is there a better place for this stuff?
-/// Moving to `mod process`
-pub trait Resource {}
+// /// Moving to `mod process`
+// pub trait Resource {}
 
-/// Moving to `mod <TBD>`
-pub struct TaskList {
-    head: Option<Box<Process>>,
-}
+// /// Moving to `mod <TBD>`
+// pub struct TaskList {
+//     head: Option<Box<Process>>,
+// }
 
-/// Moving to `mod <TBD>`
-pub struct TaskNode {
-    proc: Option<Box<Process>>,
-    prev: Option<Box<TaskNode>>,
-    next: Option<Box<TaskNode>>,
-}
+// /// Moving to `mod <TBD>`
+// pub struct TaskNode {
+//     proc: Option<Box<Process>>,
+//     prev: Option<Box<TaskNode>>,
+//     next: Option<Box<TaskNode>>,
+// }

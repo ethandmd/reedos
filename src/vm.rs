@@ -12,7 +12,8 @@ use core::arch::asm;
 
 use global::Galloc;
 use palloc::*;
-use ptable::kpage_init; //, PageTable};
+use ptable::{PageTable, kpage_init};
+
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
@@ -60,9 +61,9 @@ pub enum VmError {
 /// We start the pool at the end of the .bss section, and stop at the end of physical memory.
 /// Next, we map physical memory into the kernel's physical memory 1:1.
 /// Next, initialize the kernel virtual memory allocator pool.
-/// Finally we set the global kernel page table `KPGTABLE` variable to point to the
-/// kernel's page table struct.
-pub fn init() -> Result<(), PagePool> {
+///
+/// TODO better error type
+pub fn global_init() -> Result<PageTable, ()> {
     unsafe {
         match PAGEPOOL.set(PagePool::new(bss_end(), memory_end())) {
             Ok(_) => {}
@@ -85,18 +86,21 @@ pub fn init() -> Result<(), PagePool> {
     // Map text, data, stacks, heap into kernel page table.
     match kpage_init() {
         Ok(pt) => {
-            pt.write_satp();
-            pagetable_interrupt_stack_setup(pt);
+            return Ok(pt);
         },
         Err(_) => {
             panic!();
         }
     }
-    Ok(())
+}
+
+pub fn local_init(pt: &PageTable) {
+    pt.write_satp();
+    pagetable_interrupt_stack_setup(pt);
 }
 
 // TODO error type?
-fn pagetable_interrupt_stack_setup(pt: ptable::PageTable) {
+fn pagetable_interrupt_stack_setup(pt: &ptable::PageTable) {
     log!(Debug, "Writing kernel page table {:02X?}", pt.base);
     unsafe {
         asm!(
