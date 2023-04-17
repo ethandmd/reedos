@@ -5,8 +5,11 @@ macro_rules! print
     ($($args:tt)+) => ({
         use core::fmt::Write;
         use crate::uart;
-        // let _ = write!(uart::WRITER.lock(), $($args)+);
-        let _ = write!(uart::Uart::new().lock(), $($args)+);
+        // LSP is confused by macros, this unsafe is required
+        #[allow(unused_unsafe)]
+        let mut dev = unsafe {uart::WRITER.lock()};
+        let _ = write!(dev, $($args)+);
+        // let _ = write!(uart::Uart::new().lock(), $($args)+);
     });
 }
 

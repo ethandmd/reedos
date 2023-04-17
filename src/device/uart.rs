@@ -13,7 +13,7 @@ const LCR: usize = 3; // Line Control Register (baud rate stuff)
 const FCR: usize = 2; // FIFO Control Register (see uart layout in reference)
                       //const LSR: usize = 2; // Line Status Register (ready to rx, ready to tx signals)
 
-pub static WRITER: Mutex<Uart> = Uart::new();
+pub static mut WRITER: Mutex<Uart> = Uart::new(UART_BASE);
 
 pub struct Uart {
     base_address: usize,
@@ -28,10 +28,16 @@ impl Write for Uart {
     }
 }
 
+pub fn init() {
+    unsafe {
+        WRITER.lock().init();
+    }
+}
+
 impl Uart {
-    pub fn init() {
+    pub fn init(&mut self) {
         // https://mth.st/blog/riscv-qemu/AN-491.pdf <-- inclues 16650A ref
-        let ptr = UART_BASE as *mut u8;
+        let ptr = self.base_address as *mut u8;
         // Basic semantics:
         // `ptr` is a memory address.
         // We want to write certain values to 'registers' located
@@ -47,7 +53,7 @@ impl Uart {
             // baud rate of 38.4k
             ptr.add(0).write_volatile(0x03); // LSB (tx side)
             ptr.add(1).write_volatile(0x00); // MST (rx side)
-                                             // 8 bit words (no parity)
+            // 8 bit words (no parity)
             ptr.add(LCR).write_volatile(3);
             // Enabse and clear FIFO
             ptr.add(FCR).write_volatile(1 << 0 | 3 << 1);
@@ -56,10 +62,11 @@ impl Uart {
         }
     }
 
-    pub const fn new() -> Mutex<Self> {
-        Mutex::new(Uart {
-            base_address: UART_BASE,
-        })
+    pub const fn new(base: usize) -> Mutex<Self> {
+        let device = Self {
+            base_address: base
+        };
+        Mutex::new(device)
     }
 
     pub fn put(&mut self, c: u8) {
