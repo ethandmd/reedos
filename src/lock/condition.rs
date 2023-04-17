@@ -21,5 +21,9 @@ impl ConditionVar {
             spin_loop();
         }
     }
+
+    pub fn update(&mut self, new_val: usize) {
+        self.contents.store(new_val, Ordering::Release);
+    }
 }
 
