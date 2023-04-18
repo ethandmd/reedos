@@ -11,6 +11,7 @@
 #![feature(box_into_inner)]
 #![feature(never_type)]
 #![allow(dead_code)]
+use core::cell::OnceCell;
 use core::mem::MaybeUninit;
 use core::panic::PanicInfo;
 extern crate alloc;
@@ -38,7 +39,7 @@ use crate::lock::condition::ConditionVar;
 static mut GLOBAL_INIT_FLAG: MaybeUninit<ConditionVar> = MaybeUninit::uninit();
 // pass the initial kernel page table to non-zero id harts. This is
 // not how it is accessed after inialization
-static mut KERNEL_PAGE_TABLE: MaybeUninit<PageTable> = MaybeUninit::uninit();
+static mut KERNEL_PAGE_TABLE: OnceCell<PageTable> = OnceCell::new();
 
 // The never type "!" means diverging function (never returns).
 #[panic_handler]
@@ -129,8 +130,11 @@ fn main() -> ! {
         match vm::global_init() {
             Ok(pt) => {
                 unsafe {
-                    KERNEL_PAGE_TABLE.write(pt);
-                    vm::local_init(KERNEL_PAGE_TABLE.assume_init_ref());
+                    match KERNEL_PAGE_TABLE.set(pt) {
+                        Ok(()) => {},
+                        Err(_) => panic!("Kernel Page Table double init!"),
+                    }
+                    vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
                 }
             },
             Err(_) => {
@@ -164,7 +168,7 @@ fn main() -> ! {
         unsafe {
             // spin until the global init is done
             GLOBAL_INIT_FLAG.assume_init_ref().spin_wait(1);
-            vm::local_init(KERNEL_PAGE_TABLE.assume_init_ref());
+            vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
         }
         hartlocal::hartlocal_info_interrupt_stack_init();
         log!(Info, "Completed all hart{} local initialization", read_tp());
@@ -172,6 +176,7 @@ fn main() -> ! {
 
     // we want to test multiple processes with multiple harts
     process::test_process_syscall_basic();
+    // loop {}
 
     panic!("Reached the end of kernel main! Did the root process not start?");
 }

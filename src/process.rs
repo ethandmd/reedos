@@ -8,6 +8,7 @@ use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
+use core::cell::OnceCell;
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
@@ -29,7 +30,7 @@ mod scheduler;
 use crate::process::scheduler::ProcessQueue;
 
 // for now we wil be using a single locked round robin queue
-static mut QUEUE: MaybeUninit<Mutex<ProcessQueue>> = MaybeUninit::uninit();
+static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
 
 
 /// Global init for all process related stuff. Not exaustive, also
@@ -37,7 +38,12 @@ static mut QUEUE: MaybeUninit<Mutex<ProcessQueue>> = MaybeUninit::uninit();
 pub fn init_process_structure() {
     init_pid_subsystem();
     unsafe {
-        QUEUE.write(Mutex::new(ProcessQueue::new()));
+        match QUEUE.set(Mutex::new(ProcessQueue::new())) {
+            Ok(()) => {},
+            Err(_) => {
+                panic!("Process structure double init!");
+            },
+        }
     }
 }
 
@@ -71,6 +77,7 @@ pub struct Process {
     pgtbl: PageTable,                     // uninizalied with null
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
+    // TODO consider this as a OnceCell
 
     // sleep_time: usize           // uninit with 0, only valid with sleep state
 
@@ -428,7 +435,7 @@ pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) -> ! {
     // the process, as that would lead to an infinite lock
     let next;
     unsafe {
-        let mut locked = QUEUE.assume_init_ref().lock();
+        let mut locked = QUEUE.get().unwrap().lock();
         locked.insert(proc);
         next = locked.get_ready_process();
     }
@@ -452,7 +459,7 @@ pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
     // the process, as that would lead to an infinite lock
     let next;
     unsafe {
-        let mut locked = QUEUE.assume_init_ref().lock();
+        let mut locked = QUEUE.get().unwrap().lock();
         next = locked.get_ready_process();
     }
     match next.state {

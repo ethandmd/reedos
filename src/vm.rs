@@ -4,6 +4,7 @@ mod palloc;
 pub mod ptable;
 pub mod vmalloc;
 
+use crate::lock::mutex::Mutex;
 use crate::hw::param::*;
 use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
@@ -23,24 +24,24 @@ static mut GLOBAL: GlobalWrapper = GlobalWrapper {
 };
 
 struct GlobalWrapper {
-    inner: OnceCell<Galloc>,
+    inner: OnceCell<Mutex<Galloc>>,
 }
 
 unsafe impl GlobalAlloc for GlobalWrapper {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.inner.get().unwrap().alloc(layout)
+        self.inner.get().unwrap().lock().alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.inner.get().unwrap().dealloc(ptr, layout)
+        self.inner.get().unwrap().lock().dealloc(ptr, layout)
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        self.inner.get().unwrap().alloc_zeroed(layout)
+        self.inner.get().unwrap().lock().alloc_zeroed(layout)
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        self.inner.get().unwrap().realloc(ptr, layout, new_size)
+        self.inner.get().unwrap().lock().realloc(ptr, layout, new_size)
     }
 }
 
@@ -75,7 +76,7 @@ pub fn global_init() -> Result<PageTable, ()> {
     log!(Debug, "Successfully initialized kernel page pool...");
 
     unsafe {
-        match GLOBAL.inner.set(Galloc::new(PAGEPOOL.get_mut().unwrap())) {
+        match GLOBAL.inner.set(Mutex::new(Galloc::new(PAGEPOOL.get_mut().unwrap()))) {
             Ok(_) => {}
             Err(_) => {
                 panic!("vm double init.")
