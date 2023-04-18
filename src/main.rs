@@ -175,7 +175,7 @@ fn main() -> ! {
     }
 
     // we want to test multiple processes with multiple harts
-    process::test_process_syscall_basic();
+    process::test_multiprocess_syscall();
     // loop {}
 
     panic!("Reached the end of kernel main! Did the root process not start?");

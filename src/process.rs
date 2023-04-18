@@ -482,7 +482,7 @@ pub fn _test_process_spin() {
     proc.start();
 }
 
-pub fn test_process_syscall_basic() {
+pub fn _test_process_syscall_basic() {
     let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
     let mut proc = Process::new_uninit();
@@ -494,6 +494,40 @@ pub fn test_process_syscall_basic() {
     proc.start();
 }
 
+pub fn test_multiprocess_syscall() {
+    let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
+    let program = ELFProgram::new64(&bytes[0] as *const u8);
+    let mut proc = Process::new_uninit();
+
+    match proc.initialize64(&program) {
+        Ok(_) => {},
+        Err(e) => {panic!("Couldn't start process: {:?}", e)}
+    }
+
+    for _ in 0..4 {
+        let mut proc = Process::new_uninit();
+
+        match proc.initialize64(&program) {
+            Ok(_) => {},
+            Err(e) => {panic!("Couldn't start process: {:?}", e)}
+        }
+
+        unsafe {
+            QUEUE.get().unwrap().lock().insert(proc)
+        }
+    }
+
+    let enter;
+    unsafe {
+        enter = QUEUE.get().unwrap().lock().get_ready_process();
+    }
+    match enter.state {
+        ProcessState::Unstarted => enter.start(),
+        ProcessState::Ready => enter.resume(),
+        _ => {panic!()}
+    }
+
+}
 
 // TODO is there a better place for this stuff?
 // /// Moving to `mod process`
