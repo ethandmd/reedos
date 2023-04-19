@@ -15,6 +15,12 @@ use global::Galloc;
 use palloc::*;
 use ptable::{PageTable, kpage_init};
 
+// For saftey reasons, no part of the page allocation process all the
+// way up past this module can use rust dynamic allocation (global
+// usage). This causes a dependency cycle in some places, and a in
+// every case opens the possibility of deadlock between the global
+// lock and the palloc lock. This is mostly relevant for
+// request_phys_page
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
@@ -207,6 +213,8 @@ impl Drop for PhysPageExtent {
 
 unsafe impl Send for PhysPageExtent {}
 
+
+// VERY IMPORTANT: see top of module comment about deadlock safety
 /// Should be one and only way to get physical pages outside of vm module/subsystem.
 pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
     let addr = unsafe {
