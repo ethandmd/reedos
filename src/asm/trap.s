@@ -92,14 +92,83 @@ regular_strap:
         ## The convention is that the caller saved registers are free
         ## to clobber as with a regular call
         ##
+        ## The convention leaves a6 unused but safe to clobber, so we
+        ## will use it for other communication purposes, specifically
+        ## directing traffic
+        ##
 scall_asm:
         ## handle a yield specifically
-        addi a7, a7, -124
-        beqz a7, process_pause_asm
-        ## This will finish making process safe to restore to, and get
-        ## us back to the general kernel.
 
-        ## otherwise just call a generic rust handler
+        ## make quick space by using the sscratch stack without
+        ## changing its value
+        csrrw sp, sscratch, sp
+        addi sp, sp, -8
+        sd a0, (sp)
+        ## we are on the sscratch stack and can clobber a0 freely. All
+        ## others must be preserved
+        jal scall_direct
+
+        ## returns zero in a0 if we want to stay on the program
+        ## stack/page table, and non-zero for the kernel stack/ page
+        ## table
+
+        beqz a0, dont_change_stack
+### -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+### This is the context switch
+
+        ## change stacks/page table here
+        ld a0, (sp)
+        addi sp, sp, 8
+        csrrw sp, sscratch, sp
+        ## now program register state is as it was when scall was
+        ## executed, and we are back on the program stack
+        save_gp_regs
+        ## onto PROCESS stack
+
+        ## hold onto what we need to save
+        csrr s2, sepc
+        mv s3, sp
+        ## These two must be preserved across several calls until they
+        ## might be used in scall_rust
+
+        ## sscratch holds the interrupt stack
+        csrr sp, sscratch
+
+        ## sscratch stack holds, from low addr to high:
+        ##
+        ## the addr to restore to gp (see hartlocal.rs)
+        ## the kernel page table (satp)
+        ## the kernel stack (sp)
+
+        ## load kernel page table
+        ld t1, 8(sp)
+
+        li t0, 1
+        sll t0, t0, 63
+        ## top bit
+        srl t1, t1, 12
+        or t1, t1, t0
+        ## top bit mode and PPN
+
+        sfence.vma x0, x0
+        csrw satp, t1
+        sfence.vma x0, x0
+
+        ## get gp back to restore more info from later
+        ld gp, (sp)
+        ## get on the main kernel stack
+        ld sp, 16(sp)
+
+### -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+### This is the end of the context switch
+### We are fully in kernel space now.
+### The program pc is in a0 and the program sp is in a1
+
+dont_change_stack:
+
+        addi sp, sp, -8
+        ld ra, (sp)
+        ## call the main handler
         jal scall_rust
 
         ## TODO do we need to manually increment sepc? unclear

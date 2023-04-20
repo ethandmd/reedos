@@ -61,23 +61,3 @@ pub extern "C" fn s_handler() {
     }
 }
 
-//--------------------------------------------------------------------
-//
-// After this is late boot stuff
-
-/// System call rust handler. This is called from scall_asm. See there
-/// for calling convention info.
-///
-/// Currently this is run in supervisior mode, on the program stack,
-/// executing the kernel text.
-///
-/// This may change in the future.
-#[no_mangle]
-pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
-                             a4: usize, a5: usize, a6: usize, a7: usize) {
-    match a7 {
-        _ => {
-            panic!("Uncaught system call: {}", a7);
-        }
-    }
-}

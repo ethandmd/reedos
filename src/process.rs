@@ -29,6 +29,12 @@ use crate::process::pid::*;
 mod scheduler;
 use crate::process::scheduler::ProcessQueue;
 
+
+#[allow(unused_variables)]
+mod syscall;
+// This should not be exposed to anything, and we don't need to call
+// any of it here
+
 // for now we wil be using a single locked round robin queue
 static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
 
@@ -413,12 +419,14 @@ impl Drop for Process {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) -> ! {
+/// Suspend process so that it can be restored/restarted later. Called
+/// from syscalls currently
+fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
     let mut proc = get_running_process();
     proc.saved_pc = pc + 4;
     // ^ ecall doesn't automatically increment pc
     proc.saved_sp = sp;
+    // TODO enum for causes?
     match cause {
         0 => {
             proc.state = ProcessState::Ready;
