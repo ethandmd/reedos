@@ -3,6 +3,12 @@ use crate::hw::param::*;
 use crate::lock::mutex::Mutex;
 use crate::vm::VmError;
 
+// For safety reasons, this module and all submodules MUST not rely on
+// any kind of dynamic allocation in the rust sense. This would cause
+// a dependency cycle, which is bad enough, but more importantly could
+// lead to deadlock betwen the palloc lock and the global alloc
+// lock. This warning is repeated elsewhere
+
 /// Utility function, primarily used to check if addresses are page aligned.
 fn is_multiple(addr: usize, size: usize) -> bool {
     addr & (size - 1) == 0

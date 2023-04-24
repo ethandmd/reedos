@@ -4,6 +4,7 @@ mod palloc;
 pub mod ptable;
 pub mod vmalloc;
 
+use crate::lock::mutex::Mutex;
 use crate::hw::param::*;
 use alloc::boxed::Box;
 use core::alloc::{GlobalAlloc, Layout};
@@ -12,7 +13,14 @@ use core::arch::asm;
 
 use global::Galloc;
 use palloc::*;
-use ptable::kpage_init; //, PageTable};
+use ptable::{PageTable, kpage_init};
+
+// For saftey reasons, no part of the page allocation process all the
+// way up past this module can use rust dynamic allocation (global
+// usage). This causes a dependency cycle in some places, and a in
+// every case opens the possibility of deadlock between the global
+// lock and the palloc lock. This is mostly relevant for
+// request_phys_page
 
 /// Global physical page pool allocated by the kernel physical allocator.
 static mut PAGEPOOL: OnceCell<PagePool> = OnceCell::new();
@@ -22,24 +30,24 @@ static mut GLOBAL: GlobalWrapper = GlobalWrapper {
 };
 
 struct GlobalWrapper {
-    inner: OnceCell<Galloc>,
+    inner: OnceCell<Mutex<Galloc>>,
 }
 
 unsafe impl GlobalAlloc for GlobalWrapper {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        self.inner.get().unwrap().alloc(layout)
+        self.inner.get().unwrap().lock().alloc(layout)
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        self.inner.get().unwrap().dealloc(ptr, layout)
+        self.inner.get().unwrap().lock().dealloc(ptr, layout)
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        self.inner.get().unwrap().alloc_zeroed(layout)
+        self.inner.get().unwrap().lock().alloc_zeroed(layout)
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        self.inner.get().unwrap().realloc(ptr, layout, new_size)
+        self.inner.get().unwrap().lock().realloc(ptr, layout, new_size)
     }
 }
 
@@ -60,9 +68,9 @@ pub enum VmError {
 /// We start the pool at the end of the .bss section, and stop at the end of physical memory.
 /// Next, we map physical memory into the kernel's physical memory 1:1.
 /// Next, initialize the kernel virtual memory allocator pool.
-/// Finally we set the global kernel page table `KPGTABLE` variable to point to the
-/// kernel's page table struct.
-pub fn init() -> Result<(), PagePool> {
+///
+/// TODO better error type
+pub fn global_init() -> Result<PageTable, ()> {
     unsafe {
         match PAGEPOOL.set(PagePool::new(bss_end(), memory_end())) {
             Ok(_) => {}
@@ -74,7 +82,7 @@ pub fn init() -> Result<(), PagePool> {
     log!(Debug, "Successfully initialized kernel page pool...");
 
     unsafe {
-        match GLOBAL.inner.set(Galloc::new(PAGEPOOL.get_mut().unwrap())) {
+        match GLOBAL.inner.set(Mutex::new(Galloc::new(PAGEPOOL.get_mut().unwrap()))) {
             Ok(_) => {}
             Err(_) => {
                 panic!("vm double init.")
@@ -85,18 +93,21 @@ pub fn init() -> Result<(), PagePool> {
     // Map text, data, stacks, heap into kernel page table.
     match kpage_init() {
         Ok(pt) => {
-            pt.write_satp();
-            pagetable_interrupt_stack_setup(pt);
+            return Ok(pt);
         },
         Err(_) => {
             panic!();
         }
     }
-    Ok(())
+}
+
+pub fn local_init(pt: &PageTable) {
+    pt.write_satp();
+    pagetable_interrupt_stack_setup(pt);
 }
 
 // TODO error type?
-fn pagetable_interrupt_stack_setup(pt: ptable::PageTable) {
+fn pagetable_interrupt_stack_setup(pt: &ptable::PageTable) {
     log!(Debug, "Writing kernel page table {:02X?}", pt.base);
     unsafe {
         asm!(
@@ -202,6 +213,8 @@ impl Drop for PhysPageExtent {
 
 unsafe impl Send for PhysPageExtent {}
 
+
+// VERY IMPORTANT: see top of module comment about deadlock safety
 /// Should be one and only way to get physical pages outside of vm module/subsystem.
 pub fn request_phys_page(num: usize) -> Result<PhysPageExtent, VmError>{
     let addr = unsafe {

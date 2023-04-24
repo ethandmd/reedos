@@ -1,12 +1,11 @@
         ## This program is for testing reedos
         ##
-        ## It should attempt to call an unimplemented syscall, and
-        ## thus panic in the appropriate handler
+        ## It should just yield over and over. Test with prints in the
+        ## rust handlers
 
         .global entry
 entry:
-        ## use 1 or something to test unimplimented, use 124 to test yield
-        li a7, 124                #try an unimplemented syscall
-        scall
 spin:
+        li a7, 124                #yield
+        scall
         j spin

@@ -4,78 +4,73 @@
 // extern crate alloc;
 
 // use alloc::boxed::Box;
-use alloc::boxed::Box;
 use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
+use core::cell::OnceCell;
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
 use crate::vm::VmError;
+use crate::hw::riscv::read_tp;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
-use crate::lock::mutex::Mutex;
 use crate::hw::hartlocal::*;
+use crate::lock::mutex::Mutex;
 
 
 mod pid;
 use crate::process::pid::*;
 // We want to be able to use pid stuff, but nobody above us needs it
 
-// We need places to hold processes that are not running, and those
-// that are running at a minimum. We probably want to actually have
-// more gradation than that later.
+mod scheduler;
+use crate::process::scheduler::ProcessQueue;
 
-/// For now there is a single locked queue of owned Processes, and you
-/// grab it and iterate
-static mut PROCESS_QUEUE: MaybeUninit<Mutex<VecDeque<Process>>> = MaybeUninit::uninit();
 
-// /// Place to put the current process while running it. Noteably the
-// /// hart *cannot* own the process in the rust sense, because the
-// /// process is outside the scope of rust, and so we want to move it to
-// /// a known location that won't get dropped when we enter the process
-// /// through the never returning calls
-// static mut HART_RUNNING_SLOTS: MaybeUninit<[Process; NHART]> = MaybeUninit::uninit();
-// unsafe impl Sync for Process {}
-// // ^ note that we need this because this *has* to be global, there is
-// // no local place to put it inside the rust framework, and trying to
-// // move it onto the sscratch stack or something is asking for trouble
-// //
-// // This should *NOT* be taken to imply that you can actually use
-// // processes as if they are Sync. This is a BIG breach of rust
-// // compiler etiquette and needs to be addressed in the future,
-// // probably by just making Process Sync for real. Currently that is
-// // blocked because the page table reference is a *mut usize, which by
-// // definition is not Sync. We are making Process Sync here because if
-// // you have multiple harts working on the same process in a way that
-// // involves page table data races, tehn you have far bigger
-// // problems. The safety and organization of processes is handled at a
-// // higher level than the Process struct itself.
-// //
-// // If someone smarter than myself wants to come and fix this, go for
-// // it, but good luck
+#[allow(unused_variables)]
+mod syscall;
+// This should not be exposed to anything, and we don't need to call
+// any of it here
 
-/// Global init for all process related stuff.
+// for now we wil be using a single locked round robin queue
+static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
+
+
+/// Global init for all process related stuff. Not exaustive, also
+/// need hartlocal_info_interrupt_stack_init
 pub fn init_process_structure() {
-    hartlocal_info_interrupt_stack_init();
-
     init_pid_subsystem();
     unsafe {
-        PROCESS_QUEUE.write(Mutex::new(VecDeque::new()));
+        match QUEUE.set(Mutex::new(ProcessQueue::new())) {
+            Ok(()) => {},
+            Err(_) => {
+                panic!("Process structure double init!");
+            },
+        }
     }
 }
-
-
-
 
 // use hart local info to get the currently running process
 //
 // this is a *MOVE* of the process. Handle elsewhere
 fn get_running_process() -> Process {
     restore_gp_info64().current_process
+}
+
+#[derive(Debug)]
+pub enum ProcessState {
+    Uninitialized,              // do not attempt to run
+    Unstarted,                  // do not attempt to restore regs
+    Ready,                      // can run, restore args
+    Running,                    // is running, don't use elsewhere
+    // ^ is because ownership alone is risky to ensure safety accross
+    // context switches
+    Wait,                       // blocked on on something
+    Sleep,                      // out of the running for a bit
+    Dead,                       // do not run (needed?)
 }
 
 /// A process. The there is a real possiblity of this being largly
@@ -88,25 +83,13 @@ pub struct Process {
     pgtbl: PageTable,                     // uninizalied with null
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
+    // TODO consider this as a OnceCell
+
+    // sleep_time: usize           // uninit with 0, only valid with sleep state
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
 
-    // unsused, possibly not needed ever
-    // trapframe: TrapFrame,
-    // ctx_regs: HartContext,
-}
-
-pub enum ProcessState {
-    Uninitialized,              // do not attempt to run
-    Unstarted,                  // do not attempt to restore regs
-    Ready,                      // can run, restore args
-    Running,                    // is running, don't use elsewhere
-    // ^ is because ownership alone is risky to ensure safety accross
-    // context switches
-    Wait,                       // blocked on on something
-    Sleep,                      // out of the running for a bit
-    Dead,                       // do not run (needed?)
 }
 
 impl Process {
@@ -436,12 +419,14 @@ impl Drop for Process {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
+/// Suspend process so that it can be restored/restarted later. Called
+/// from syscalls currently
+fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
     let mut proc = get_running_process();
     proc.saved_pc = pc + 4;
     // ^ ecall doesn't automatically increment pc
     proc.saved_sp = sp;
+    // TODO enum for causes?
     match cause {
         0 => {
             proc.state = ProcessState::Ready;
@@ -451,9 +436,47 @@ pub extern "C" fn process_pause_rust(pc: usize, sp: usize, cause: usize) {
         }
     }
 
-    log!(Debug, "Process yielded! Testing restoration");
-    proc.resume();
+    log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
+
+
+    // This is careful code to avoid holding the lock when we enter
+    // the process, as that would lead to an infinite lock
+    let next;
+    unsafe {
+        let mut locked = QUEUE.get().unwrap().lock();
+        locked.insert(proc);
+        next = locked.get_ready_process();
+    }
+    match next.state {
+        ProcessState::Ready => {next.resume()},
+        ProcessState::Unstarted => {next.start()},
+        _ => {panic!("Bad process state from scheduler!")}
+    }
 }
+
+#[no_mangle]
+pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
+    let proc = get_running_process();
+    log!(Debug, "Process {} exited with code {}.", proc.id, exit_code);
+    drop(proc);
+    // ^ ensure that the never returning scheduler call doesn't extend
+    // the life of the process
+
+
+    // This is careful code to avoid holding the lock when we enter
+    // the process, as that would lead to an infinite lock
+    let next;
+    unsafe {
+        let mut locked = QUEUE.get().unwrap().lock();
+        next = locked.get_ready_process();
+    }
+    match next.state {
+        ProcessState::Ready => {next.resume()},
+        ProcessState::Unstarted => {next.start()},
+        _ => {panic!("Bad process state from scheduler!")}
+    }
+}
+
 
 pub fn _test_process_spin() {
     let bytes = include_bytes!("programs/spin/spin.elf");
@@ -467,7 +490,7 @@ pub fn _test_process_spin() {
     proc.start();
 }
 
-pub fn test_process_syscall_basic() {
+pub fn _test_process_syscall_basic() {
     let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
     let mut proc = Process::new_uninit();
@@ -479,19 +502,53 @@ pub fn test_process_syscall_basic() {
     proc.start();
 }
 
+pub fn test_multiprocess_syscall() {
+    let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
+    let program = ELFProgram::new64(&bytes[0] as *const u8);
+    let mut proc = Process::new_uninit();
+
+    match proc.initialize64(&program) {
+        Ok(_) => {},
+        Err(e) => {panic!("Couldn't start process: {:?}", e)}
+    }
+
+    for _ in 0..4 {
+        let mut proc = Process::new_uninit();
+
+        match proc.initialize64(&program) {
+            Ok(_) => {},
+            Err(e) => {panic!("Couldn't start process: {:?}", e)}
+        }
+
+        unsafe {
+            QUEUE.get().unwrap().lock().insert(proc)
+        }
+    }
+
+    let enter;
+    unsafe {
+        enter = QUEUE.get().unwrap().lock().get_ready_process();
+    }
+    match enter.state {
+        ProcessState::Unstarted => enter.start(),
+        ProcessState::Ready => enter.resume(),
+        _ => {panic!()}
+    }
+
+}
 
 // TODO is there a better place for this stuff?
-/// Moving to `mod process`
-pub trait Resource {}
+// /// Moving to `mod process`
+// pub trait Resource {}
 
-/// Moving to `mod <TBD>`
-pub struct TaskList {
-    head: Option<Box<Process>>,
-}
+// /// Moving to `mod <TBD>`
+// pub struct TaskList {
+//     head: Option<Box<Process>>,
+// }
 
-/// Moving to `mod <TBD>`
-pub struct TaskNode {
-    proc: Option<Box<Process>>,
-    prev: Option<Box<TaskNode>>,
-    next: Option<Box<TaskNode>>,
-}
+// /// Moving to `mod <TBD>`
+// pub struct TaskNode {
+//     proc: Option<Box<Process>>,
+//     prev: Option<Box<TaskNode>>,
+//     next: Option<Box<TaskNode>>,
+// }
