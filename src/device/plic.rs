@@ -16,16 +16,14 @@
 // https://github.com/sgmarz/osblog/blob/master/risc_v/src/plic.rs (a little)
     // could use it more.. e.g. cases more rustlike.
 
-use core::mem::{MaybeUninit};
-use core::cell::OnceCell; // for PLIC, write once read many times
-//use core::ops::Deref;
 
+use core::cell::OnceCell; // for PLIC, write once read many times
 use crate::hw::riscv;
-// use crate::lock::mutex::*;
 use crate::hw::param::{PLIC_BASE, UART_IRQ};
+
 // ^ constants for PLIC_BASE & device interrupt (IRQ) priority locations.
 
-pub static mut PLIC: MaybeUninit<OnceCell<Plic>> = MaybeUninit::uninit(); // all memory accesses to Plic go through here!
+pub static mut PLIC: OnceCell<Plic> = OnceCell::new(); // all memory accesses to Plic go through here!
 
 pub struct Plic { 
     base: usize,
@@ -44,8 +42,10 @@ pub fn global_init() {
 
     // initialize PLIC
     unsafe {
-        PLIC.write(OnceCell::new());
-        PLIC.assume_init().set(Plic::new(PLIC_BASE));
+        match PLIC.set(Plic::new(PLIC_BASE)) {
+            Ok(()) => {},
+            Err(_) => panic!("Plic double init!"),
+        }
     }
 }
 
@@ -57,17 +57,12 @@ pub fn local_init() {
     let bit_mask: u32 = 1 << UART_IRQ;
 
     unsafe {
-    PLIC.assume_init().get().unwrap().hart_local_enable(bit_mask); 
+        // call the write to Plic magic locations for the enabled bits.
+        PLIC.get().unwrap().hart_local_enable(bit_mask); 
+
+        // accept interrupts from all enabled devices with priority > 0.
+        PLIC.get().unwrap().set_s_priority_threshold(0);
     }
-    
-    let initialized_plic = unsafe{PLIC.assume_init()}; // would this allow for copies of PLIC that circumvented the mutex?
-
-    // call the write to Plic magic locations for the enabled bits.
-    initialized_plic.get().unwrap().hart_local_enable(bit_mask);
-    // accept interrupts from all enabled devices with priority > 0.
-    initialized_plic.get().unwrap().set_s_priority_threshold(0);
-
-    // ASK: does MUTEX drop when locked_plic goes out of scope here? If so, why is there a drop method?
 }
 
 // currently stolen directly from xv6-riscv
