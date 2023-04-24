@@ -1,7 +1,4 @@
-/*!
-minimal rust kernel built for (qemu virt machine) riscv.
-*/
-
+//! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
 #![feature(pointer_byte_offsets)]
@@ -107,9 +104,11 @@ fn main() -> ! {
         println!("{}", param::BANNER);
         log!(Info, "Bootstrapping on hart0...");
         trap::init();
-        plic::global_init();
-        plic::local_init();
         log!(Info, "Finished trap init...");
+        plic::global_init();
+        log!(Info, "Finished plic globl init...");
+        plic::local_init();
+        log!(Info, "Finished plic local init hart0...");
         let _ = vm::init();
         log!(Info, "Initialized the kernel page table...");
         unsafe {
@@ -121,7 +120,9 @@ fn main() -> ! {
     } else {
         //Interrupt other harts to init kpgtable.
         trap::init();
-        plic::local_init();
+        //plic::local_init();
+        //log!(Info, "Finished plic local init hart0...");
+
     }
 
     loop {}

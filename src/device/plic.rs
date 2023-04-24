@@ -46,6 +46,7 @@ pub fn global_init() {
             Ok(()) => {},
             Err(_) => panic!("Plic double init!"),
         }
+        assert!(PLIC.get().is_some());
     }
 }
 
@@ -58,10 +59,11 @@ pub fn local_init() {
 
     unsafe {
         // call the write to Plic magic locations for the enabled bits.
-        PLIC.get().unwrap().hart_local_enable(bit_mask); 
+        assert!(PLIC.get().is_some());
+        PLIC.get().expect("PLIC Once Cell is not written").hart_local_enable(bit_mask); 
 
         // accept interrupts from all enabled devices with priority > 0.
-        PLIC.get().unwrap().set_s_priority_threshold(0);
+        PLIC.get().expect("PLIC should be initialized").set_s_priority_threshold(0);
     }
 }
 
@@ -87,7 +89,7 @@ impl Plic {
         const RAW_OFFSET: usize = 0x201000;
         const RAW_STEP: usize = 0x2000;
 
-        let final_offset = (RAW_OFFSET + (hart * RAW_STEP)); // / 4?
+        let final_offset = (RAW_OFFSET + (hart * RAW_STEP))/4; // / 4?
         unsafe {
             addr.add(final_offset).write_volatile(threshold);
         }
@@ -101,7 +103,7 @@ impl Plic {
         const RAW_OFFSET: usize = 0x2080;
         const RAW_STEP: usize = 0x100;
         
-        let final_offset = (RAW_OFFSET + (hart * RAW_STEP)); //ASK: /4?
+        let final_offset = (RAW_OFFSET + (hart * RAW_STEP))/4; //ASK: /4?
         
         unsafe {
             addr.add(final_offset).write_volatile(bit_mask); //ASK: length?
@@ -116,7 +118,7 @@ impl Plic {
         const RAW_OFFSET: usize = 0x201004; // 4-bits after threshold
         const RAW_STEP: usize = 0x2000;
 
-        let final_offset = (RAW_OFFSET + (hart * RAW_STEP)); //ASK / 4?
+        let final_offset = (RAW_OFFSET + (hart * RAW_STEP))/4; //ASK / 4?
         unsafe {
             // returns highest-priority pending interrupt
             addr.add(final_offset).read_volatile()
@@ -132,7 +134,7 @@ impl Plic {
         const RAW_OFFSET: usize = 0x201004;
         const RAW_STEP: usize = 0x2000;
 
-        let final_offset = (RAW_OFFSET + (hart * RAW_STEP)); //ASK: / 4?
+        let final_offset = (RAW_OFFSET + (hart * RAW_STEP))/4; //ASK: / 4?
         unsafe {
             // signals completion of interrupt identified by IRQ
             addr.add(final_offset).write_volatile(irq);
