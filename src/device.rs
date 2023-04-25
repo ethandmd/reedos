@@ -2,3 +2,4 @@
 pub mod clint;
 pub mod uart;
 pub mod plic;
+pub mod virtio;
