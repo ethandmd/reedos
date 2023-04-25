@@ -31,6 +31,7 @@ pub mod file;
 use crate::hw::hartlocal;
 use crate::vm::ptable::PageTable;
 use crate::device::uart;
+use crate::device::plic;
 use crate::hw::param;
 use crate::hw::riscv::*;
 use crate::lock::condition::ConditionVar;
@@ -142,6 +143,8 @@ fn main() -> ! {
             }
         }
         log!(Info, "Initialized the kernel page table...");
+        plic::global_init();
+        log!(Info, "Finished plic globl init...");
         unsafe {
             log!(Debug, "Testing page allocation and freeing...");
             vm::test_palloc();
@@ -155,6 +158,8 @@ fn main() -> ! {
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
         log!(Debug, "Successfuly initialized the process system...");
+        plic::local_init();
+        log!(Info, "Finished plic local init hart0...");
         log!(Info, "Completed all hart0 initialization and testing...");
 
         unsafe {
@@ -171,7 +176,9 @@ fn main() -> ! {
             vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
         }
         hartlocal::hartlocal_info_interrupt_stack_init();
+        plic::local_init();
         log!(Info, "Completed all hart{} local initialization", read_tp());
+
     }
 
     // we want to test multiple processes with multiple harts

@@ -11,13 +11,13 @@ The general loop of using `gdb` is issuing commands, and waiting for the program
 ## Invokation
 `gdb` can be invoked without arguments, but you likely want to use `gdb reedos.ELF` to load the symbols from the elf so that you can see what you are doing with human readable symbol names.
 
-This project has a .gdbinit file, which means if you invoke gdb in the root directory then it should automatically be set up as you would want it for this project. In short it establish a expected connection with qemu and waits for it to become active. The makefile is set up to talk to this port if evoked with `DEBUG=1`:
+This project has a .gdbinit file, which means if you invoke gdb in the root directory then it should automatically be set up as you would want it for this project. In short it establishes an expected connection with qemu and waits for it to become active. The makefile is set up to talk to this port if evoked with `DEBUG=1`:
 ```
-$ make run DEBUG=1
+$ make qemu-gdb
 ```
 or
 ```
-$ DEBUG=1 make run
+$ DEBUG=1 cargo run
 ```
 
 ## Expressions
@@ -50,7 +50,7 @@ The third letter, if provided, is the size of data to consider:
 - g: giant-word (8 bytes)
 
 ## Commands
-Any command can be abbreviated to as few letter as it takes to make it unique (in order, not necessarily contiguous), or many common ones have single letter abbreviations noted below.
+Any command can be abbreviated to as few letters as it takes to make it unique (in order, not necessarily contiguous), or many common ones have single letter abbreviations noted below.
 
 Pressing enter with and empty prompt performs the same command again. This is very useful for things like `step` and `next`.
 
