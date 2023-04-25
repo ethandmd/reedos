@@ -55,7 +55,7 @@ impl Uart {
             ptr.add(1).write_volatile(0x00); // MST (rx side)
             // 8 bit words (no parity)
             ptr.add(LCR).write_volatile(3);
-            // Enabse and clear FIFO
+            // Enable and clear FIFO
             ptr.add(FCR).write_volatile(1 << 0 | 3 << 1);
             // Enable tx and rx interrupts
             ptr.add(IER).write_volatile(1 << 1 | 1 << 0);

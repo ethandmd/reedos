@@ -33,6 +33,10 @@ pub const CLINT_BASE: usize = 0x2000000;
 /// PLIC base address.
 pub const PLIC_BASE: usize = 0xc000000;
 
+/// PLIC size in memory
+pub const PLIC_SIZE: usize = 0x400000;
+//TODO this should be a function of NHART
+
 /// UART base adderss.
 pub const UART_BASE: usize = 0x10000000;
 

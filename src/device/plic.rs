@@ -37,7 +37,8 @@ pub fn global_init() {
     let base_addr = PLIC_BASE as *mut u32;
 
     unsafe {
-        base_addr.add(UART_IRQ*4).write_volatile(1);
+        base_addr.add(UART_IRQ).write_volatile(1);
+        // Would do virtio here
     }
 
     // initialize PLIC
@@ -68,6 +69,12 @@ pub fn local_init() {
 }
 
 // currently stolen directly from xv6-riscv
+
+// TODO these should really be mut calls, since they have potential to
+// change internal state. However they are not so we can use a
+// OnceCell. Consider using MaybeUninit, or something else. A mutex is
+// not the answer, as PLICs can and should be used in parallel by
+// multiple harts.
 
 /// new makes Plic at a specific place with specific interrupts enabled.
 impl Plic {
@@ -111,7 +118,7 @@ impl Plic {
     }
 
     /// Claim an interupt that you were alerted to.
-    pub fn claim(&mut self) -> u32 {
+    pub fn claim(&self) -> u32 {
         let addr = self.base as *mut u32;
         let hart = riscv::read_tp() as usize;
 
@@ -127,7 +134,7 @@ impl Plic {
     }
 
     /// Alert the PLIC that we have completed the interupt we claimed
-    pub fn complete(&mut self, irq: u32) {
+    pub fn complete(&self, irq: u32) {
         let addr = self.base as *mut u32;
         let hart = riscv::read_tp() as usize;
 

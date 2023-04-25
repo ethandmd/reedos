@@ -226,6 +226,15 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
 
     page_map(
         kpage_table,
+        PLIC_BASE as *mut usize,
+        PLIC_BASE as *mut usize,
+        PLIC_SIZE,
+        PTE_READ | PTE_WRITE,
+    )?;
+    log!(Debug, "Successfully mapped PLIC into kernel pgtable...");
+
+    page_map(
+        kpage_table,
         DRAM_BASE,
         DRAM_BASE as *mut usize,
         text_end().addr() - DRAM_BASE.addr(),
