@@ -59,39 +59,7 @@ pub extern "C" fn s_handler() {
 
     match cause {
         S_EXTERN_IRQ => {
-            let irq = unsafe {
-               plic::PLIC.get().expect("PLIC not initialized!").claim()
-            };
-
-            const UART_IRQ: u32 = param::UART_IRQ as u32;
-            match irq {
-                UART_IRQ => {
-                    // I intentionally don't hold the lock here to
-                    // allow printing. Normally we shouldn't print
-                    // here
-                    let input = unsafe {
-                        match uart::WRITER.lock().get() {
-                            Some(i) => i,
-                            None => {
-                                // spurious irq? just exit early
-                                plic::PLIC.get().unwrap().complete(irq);
-                                return
-                            }
-                        }
-                    };
-                    log!(Info, "Got UART input: {}",
-                         char::from_u32(input as u32).expect(
-                             "Illformed UART input character!"
-                         ));
-                    unsafe {
-                        plic::PLIC.get().unwrap().complete(irq)
-                    };
-
-                },
-                _ => {
-                    panic!("Uncaught PLIC exception.")
-                }
-            }
+            s_extern()
         },
         _ => {
             log::log!(
@@ -104,3 +72,45 @@ pub extern "C" fn s_handler() {
     }
 }
 
+/// Called when we get a S mode external interupt. Probably UART input
+/// or virtio.
+fn s_extern() {
+    let irq = unsafe {
+        plic::PLIC.get().expect("PLIC not initialized!").claim()
+    };
+
+    const UART_IRQ: u32 = param::UART_IRQ as u32;
+    match irq {
+        0 => {
+            // reserved for "No interrupt" according to the
+            // cookbook. Just chill I guess, I don't think we need to
+            // complete it
+        }
+        UART_IRQ => {
+            // I intentionally don't hold the lock here to
+            // allow printing. Normally we shouldn't print
+            // here
+            let input = unsafe {
+                match uart::WRITER.lock().get() {
+                    Some(i) => i,
+                    None => {
+                        // spurious irq? just exit early
+                        plic::PLIC.get().unwrap().complete(irq);
+                        return
+                    }
+                }
+            };
+            log!(Info, "Got UART input: {}",
+                 char::from_u32(input as u32).expect(
+                     "Illformed UART input character!"
+                 ));
+            unsafe {
+                plic::PLIC.get().unwrap().complete(irq)
+            };
+
+        },
+        _ => {
+            panic!("Uncaught PLIC exception.")
+        }
+    }
+}

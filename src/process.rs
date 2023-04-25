@@ -436,7 +436,7 @@ fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
         }
     }
 
-    log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
+    // log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
 
 
     // This is careful code to avoid holding the lock when we enter
