@@ -22,6 +22,9 @@ use crate::hw::hartlocal::*;
 use crate::lock::mutex::Mutex;
 
 
+pub mod blocking;
+// This should be visible externally
+
 mod pid;
 use crate::process::pid::*;
 // We want to be able to use pid stuff, but nobody above us needs it
@@ -85,11 +88,8 @@ pub struct Process {
     // ^ hopefully it's clear how this is uninit
     // TODO consider this as a OnceCell
 
-    // sleep_time: usize           // uninit with 0, only valid with sleep state
-
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
-
 }
 
 impl Process {
