@@ -221,6 +221,17 @@ pub fn read_pmpcfg0() -> usize {
     addr
 }
 
+pub fn read_time() -> u64 {
+    let mtime: u64;
+    unsafe {
+        asm!(
+            "rdtime {x}",
+            x = out(reg) mtime
+        );
+    }
+    mtime
+}
+
 /// Just for curiosity's sake:
 /// <https://github.com/rust-lang/rust/issues/82753>
 /// tp := thread pointer register.

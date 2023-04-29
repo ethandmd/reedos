@@ -3,12 +3,14 @@
 
 // extern crate alloc;
 
-// use alloc::boxed::Box;
+use alloc::boxed::Box;
 use alloc::collections::vec_deque::*;
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
 use core::cell::OnceCell;
+use alloc::rc::Rc;
+// TODO ^ is this the right thing to use for blocking things?
 
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
@@ -23,6 +25,7 @@ use crate::lock::mutex::Mutex;
 
 
 pub mod blocking;
+use blocking::*;
 // This should be visible externally
 
 mod pid;
@@ -63,7 +66,20 @@ fn get_running_process() -> Process {
     restore_gp_info64().current_process
 }
 
-#[derive(Debug)]
+pub trait ProcessFileAbstraction {}
+// ^ TODO better name for this
+//
+// Basically this is what linux would have corresponding to a file
+// descriptor
+
+pub struct ProcessHeldResource
+{
+    process_rid: usize,
+    held_resource: Box<dyn ProcessFileAbstraction>
+}
+// TODO same deal here, basically this is what a Process struct owns
+// when they hold a file or a blocking resource or whatever
+
 pub enum ProcessState {
     Uninitialized,              // do not attempt to run
     Unstarted,                  // do not attempt to restore regs
@@ -71,8 +87,11 @@ pub enum ProcessState {
     Running,                    // is running, don't use elsewhere
     // ^ is because ownership alone is risky to ensure safety accross
     // context switches
-    Wait,                       // blocked on on something
-    Sleep,                      // out of the running for a bit
+    Wait(Rc<dyn Blocking<dyn Resource>>, ReqType),       // blocked on on something ^ Block manages
+    // mut for us, so Rc's const refs are fine. Is this the right type
+    // of indirection? Regular references require gross lifetime stuff
+    // that is not contained to this module, so I want to avoid that.
+    Sleep(u64),               // out of the running for a bit
     Dead,                       // do not run (needed?)
 }
 
@@ -87,6 +106,7 @@ pub struct Process {
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
     // TODO consider this as a OnceCell
+    held_resources: MaybeUninit<VecDeque<ProcessHeldResource>>
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
@@ -101,6 +121,7 @@ impl Process {
             state: ProcessState::Uninitialized,
             pgtbl: PageTable::new(null_mut()),
             phys_pages: MaybeUninit::uninit(),
+            held_resources: MaybeUninit::uninit(),
             saved_pc: 0,
             saved_sp: 0,
         };
@@ -117,6 +138,7 @@ impl Process {
                     .expect("Could not allocate a page table for a new process.");
                 self.pgtbl = PageTable::new(pt.start());
                 self.phys_pages.write(VecDeque::new());
+                self.held_resources.write(VecDeque::new());
                 unsafe {
                     self.phys_pages.assume_init_mut().push_back(pt);
                 }
@@ -149,10 +171,10 @@ impl Process {
             text_end().addr() - text_start().addr(),
             kernel_process_flags(true, false, true)
         )?;
-        log!(
-            Debug,
-            "Sucessfully mapped kernel text into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Sucessfully mapped kernel text into process pgtable..."
+        // );
 
         page_map(
             self.pgtbl,
@@ -161,10 +183,10 @@ impl Process {
             rodata_end().addr() - text_end().addr(),
             kernel_process_flags(true, false, false),
         )?;
-        log!(
-            Debug,
-            "Succesfully mapped kernel rodata into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Succesfully mapped kernel rodata into process pgtable..."
+        // );
 
         page_map(
             self.pgtbl,
@@ -173,10 +195,10 @@ impl Process {
             data_end().addr() - rodata_end().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(
-            Debug,
-            "Succesfully mapped kernel data into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Succesfully mapped kernel data into process pgtable..."
+        // );
 
         // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
         // problem.
@@ -190,11 +212,11 @@ impl Process {
                 PAGE_SIZE * 2,
                 kernel_process_flags(true, true, false),
             )?;
-            log!(
-                Debug,
-                "Succesfully mapped kernel stack {} into process pgtable...",
-                s
-            );
+        //     log!(
+        //         Debug,
+        //         "Succesfully mapped kernel stack {} into process pgtable...",
+        //         s
+        //     );
         }
 
         // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
@@ -219,11 +241,11 @@ impl Process {
                 PAGE_SIZE,
                 kernel_process_flags(true, true, false),
             )?;
-            log!(
-                Debug,
-                "Succesfully mapped interrupt stack for hart {} into process pgtable...",
-                i
-            );
+            // log!(
+            //     Debug,
+            //     "Succesfully mapped interrupt stack for hart {} into process pgtable...",
+            //     i
+            // );
         }
 
         page_map(
@@ -233,7 +255,7 @@ impl Process {
             bss_end().addr() - bss_start().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(Debug, "Succesfully mapped kernel bss into process...");
+        // log!(Debug, "Succesfully mapped kernel bss into process...");
 
         page_map(
             self.pgtbl,
@@ -242,7 +264,7 @@ impl Process {
             memory_end().addr() - bss_end().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(Debug, "Succesfully mapped kernel heap into process...");
+        // log!(Debug, "Succesfully mapped kernel heap into process...");
 
         Ok(())
     }
@@ -537,18 +559,3 @@ pub fn test_multiprocess_syscall() {
 
 }
 
-// TODO is there a better place for this stuff?
-// /// Moving to `mod process`
-// pub trait Resource {}
-
-// /// Moving to `mod <TBD>`
-// pub struct TaskList {
-//     head: Option<Box<Process>>,
-// }
-
-// /// Moving to `mod <TBD>`
-// pub struct TaskNode {
-//     proc: Option<Box<Process>>,
-//     prev: Option<Box<TaskNode>>,
-//     next: Option<Box<TaskNode>>,
-// }

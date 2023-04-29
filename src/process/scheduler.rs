@@ -4,6 +4,7 @@
 use alloc::collections::VecDeque;
 
 use crate::process::*;
+use crate::hw::riscv;
 
 
 /// This represents a round robin queue of processes that can be
@@ -25,11 +26,11 @@ impl ProcessQueue {
     }
 
     /// This is the acquiring half of the scheduler. This function
-    /// internally enforces fairness and efficiency and everything else
+    /// internally enforces fairness and efficiency and everythsing else
     pub fn get_ready_process(&mut self) -> Process {
         // iterate while the queue is non-empty
-        while let Some(head) = self.proc_queue.pop_front() {
-            match head.state {
+        while let Some(mut head) = self.proc_queue.pop_front() {
+            match &head.state {
                 // found something we can run
                 ProcessState::Ready | ProcessState::Unstarted => {
                     return head
@@ -37,11 +38,41 @@ impl ProcessQueue {
 
                 // found something we might be able to run, check. If
                 // ready, run. If not, insert at the end of the queue
-                ProcessState::Wait => {
-                    todo!("Setup blocking infrastructure")
+                ProcessState::Wait(resource, req_type)  => {
+                    match req_type {
+                        blocking::ReqType::Read => {
+                            match (*(*resource).as_ref()).acquire_read() {
+                                Some(read_guard) => {
+                                    // Got the resource we want!
+                                    todo!("Add to process held resources")
+                                },
+                                None => {
+                                    // couldn't get the resource, keep blocking
+                                    continue
+                                },
+                            }
+                        },
+                        blocking::ReqType::Write => {
+                            match (*(*resource).as_ref()).acquire_write() {
+                                Some(read_guard) => {
+                                    // Got the resource we want!
+                                    todo!("Add to process held resources")
+                                },
+                                None => {
+                                    // couldn't get the resource, keep blocking
+                                    continue
+                                },
+                            }
+
+                        },
+                    }
                 },
-                ProcessState::Sleep => {
-                    todo!("Compare with proc.sleep_time")
+
+                ProcessState::Sleep(cmp_time) => {
+                    if riscv::read_time() >= *cmp_time {
+                        head.state = ProcessState::Ready;
+                        return head
+                    }
                 },
 
                 // found something that probably shouldn't be in the queue
@@ -76,7 +107,7 @@ impl ProcessQueue {
         match proc.state {
             ProcessState::Ready | ProcessState::Unstarted => {},
             _ => {
-                panic!("Unsuitable process state inserted into scheduling queue! {:?}", proc.state);
+                panic!("Unsuitable process state inserted into scheduling queue!");
             }
         }
         self.proc_queue.push_back(proc);
