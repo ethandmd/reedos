@@ -22,38 +22,74 @@ use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
 use crate::hw::hartlocal::*;
 use crate::lock::mutex::Mutex;
+use crate::id::IdGenerator;
 
 
 pub mod blocking;
 use blocking::*;
 // This should be visible externally
 
-mod pid;
-use crate::process::pid::*;
-// We want to be able to use pid stuff, but nobody above us needs it
+// mod pid;
+// use crate::process::pid::*;
+// // We want to be able to use pid stuff, but nobody above us needs it
 
 mod scheduler;
 use crate::process::scheduler::ProcessQueue;
-
 
 #[allow(unused_variables)]
 mod syscall;
 // This should not be exposed to anything, and we don't need to call
 // any of it here
 
-// for now we wil be using a single locked round robin queue
-static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
+static mut PID_GENERATOR: OnceCell<Mutex<IdGenerator>> = OnceCell::new();
 
+// for now we will be using a single locked round robin queue
+static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
 
 /// Global init for all process related stuff. Not exaustive, also
 /// need hartlocal_info_interrupt_stack_init
 pub fn init_process_structure() {
-    init_pid_subsystem();
     unsafe {
+        match PID_GENERATOR.set(Mutex::new(IdGenerator::new())) {
+            Ok(()) => {},
+            Err(_) => {
+                panic!("Process structure double init!");
+            },
+        }
         match QUEUE.set(Mutex::new(ProcessQueue::new())) {
             Ok(()) => {},
             Err(_) => {
                 panic!("Process structure double init!");
+            },
+        }
+    }
+}
+
+/// Get a new PID that is not currently in use.
+pub fn generate_new_pid() -> usize {
+    unsafe {
+        match PID_GENERATOR.get() {
+            Some(lock) => {
+                let mut guard = lock.lock();
+                return guard.generate()
+            },
+            None => {
+                panic!("Process structure not initalized!")
+            },
+        }
+    }
+}
+
+/// Release a PID so that it can be used in the future.
+pub fn return_used_pid(pid: usize) {
+    unsafe {
+        match PID_GENERATOR.get() {
+            Some(lock) => {
+                let mut guard = lock.lock();
+                return guard.free(pid)
+            },
+            None => {
+                panic!("Process structure not initalized!")
             },
         }
     }
