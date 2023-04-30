@@ -232,7 +232,15 @@ pub fn kpage_init() -> Result<PageTable, VmError> {
         PTE_READ | PTE_WRITE,
     )?;
     log!(Debug, "Successfully mapped PLIC into kernel pgtable...");
-
+    
+    page_map(
+        kpage_table,
+        VIRTIO_BASE as *mut usize,
+        VIRTIO_BASE as *mut usize,
+        VIRTIO_SIZE,
+        PTE_READ | PTE_WRITE,
+    )?;
+    log!(Debug, "Successfully mapped PLIC into kernel pgtable...");
     page_map(
         kpage_table,
         DRAM_BASE,
