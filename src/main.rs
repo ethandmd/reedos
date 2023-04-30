@@ -153,6 +153,9 @@ fn main() -> ! {
         log!(Debug, "Testing phys page extent allocation and freeing...");
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
+        
+        log!(Debug, "Querying VIRTIO device...");
+        unsafe { device::virtio::test_virtio_init(); }
 
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
@@ -167,22 +170,21 @@ fn main() -> ! {
         }
     } else {
         // Do the init that can be independent and without global deps.
-        trap::init();
+        //trap::init();
 
-        unsafe {
-            // spin until the global init is done
-            GLOBAL_INIT_FLAG.assume_init_ref().spin_wait(1);
-            vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
-        }
-        hartlocal::hartlocal_info_interrupt_stack_init();
-        plic::local_init();
-        log!(Info, "Completed all hart{} local initialization", read_tp());
+        //unsafe {
+        //    // spin until the global init is done
+        //    GLOBAL_INIT_FLAG.assume_init_ref().spin_wait(1);
+        //    vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
+        //}
+        //hartlocal::hartlocal_info_interrupt_stack_init();
+        //plic::local_init();
+        //log!(Info, "Completed all hart{} local initialization", read_tp());
 
     }
-
     // we want to test multiple processes with multiple harts
-    process::test_multiprocess_syscall();
-    // loop {}
+    //process::test_multiprocess_syscall();
+    loop {}
 
-    panic!("Reached the end of kernel main! Did the root process not start?");
+    //panic!("Reached the end of kernel main! Did the root process not start?");
 }
