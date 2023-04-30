@@ -7,6 +7,7 @@
 
 set -euo pipefail
 
+# ** Don't forget to `$qemu-img create fs.img 64k` (or whatever size you want).
 FLAGS=(-machine virt -smp 2 -m 128M -bios none -nographic \
     -drive file=fs.img,if=none,format=raw,id=x0 \
     -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0)

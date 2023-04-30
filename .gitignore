@@ -4,6 +4,7 @@
 *.o
 *.elf
 .rust*
+*.img
 
 # IDE/direnv stuff
 .vscode/
