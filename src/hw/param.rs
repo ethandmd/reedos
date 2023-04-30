@@ -43,6 +43,12 @@ pub const UART_BASE: usize = 0x10000000;
 /// UART interrupt request number.
 pub const UART_IRQ: usize = 10;
 
+/// VIRTIO base address.
+pub const VIRTIO_BASE:usize = 0x10001000;
+
+/// VIRTIO size.
+pub const VIRTIO_SIZE: usize = 0x4000;
+
 /// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 
