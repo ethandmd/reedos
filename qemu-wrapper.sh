@@ -7,7 +7,9 @@
 
 set -euo pipefail
 
-FLAGS=(-machine virt -smp 2 -m 128M -bios none -nographic)
+FLAGS=(-machine virt -smp 2 -m 128M -bios none -nographic \
+    -drive file=fs.img,if=none,format=raw,id=x0 \
+    -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0)
 
 print_help() { echo "$(tput setaf 2)$(tput bold)(info)$(tput sgr0) $1"; }
 
