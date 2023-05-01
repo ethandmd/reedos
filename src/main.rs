@@ -154,8 +154,8 @@ fn main() -> ! {
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
         
-        log!(Debug, "Querying VIRTIO device...");
-        unsafe { device::virtio::test_virtio_init(); }
+        log!(Debug, "Initializing VIRTIO blk device...");
+        let _ = device::virtio::virtio_init();
 
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
