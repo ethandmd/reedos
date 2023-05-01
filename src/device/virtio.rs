@@ -225,7 +225,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
     write_virtio_reg_4(VIRTIO_STATUS, device_status);
     let new_status = read_virtio_reg_4(VIRTIO_STATUS);
-    if (new_status & (VirtioDeviceStatus::FeaturesOk as u32)) != 0x1 {
+    if (new_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0x0 {
         println!("FeaturesOK (not supported || not accepted).");
     }
 
@@ -240,7 +240,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
     // iii. Check max queue size; read QueueNumMax, if 0x0, queue not avail.
     let vq_max = read_virtio_reg_4(VIRTIO_QUEUE_NUM_MAX);
-    println!("Max queues: {}", vq_max);
+    log!(Debug, "Virtio BLK dev max queues: {}", vq_max);
     if vq_max == 0x0 || (vq_max as usize) < RING_SIZE {
         return Err("Queue is not available.");
     }
@@ -265,8 +265,6 @@ pub fn virtio_init() -> Result<(), &'static str> {
     write_virtio_reg_4(VIRTIO_QUEUE_NUM, RING_SIZE as u32);
 
     // vi. Write queue addrs to desc{high/low}, ...
-    println!("Test convert: {:02x} -> {:02x}", desc_ptr.addr(), (desc_ptr.addr()));
-    println!("Test convert: {:02x} -> {:02x}", desc_ptr.addr(), (desc_ptr.addr() >> 32));
     write_virtio_reg_4(VIRTIO_QUEUE_DESC_LOW, desc_ptr.addr() as u32);
     write_virtio_reg_4(VIRTIO_QUEUE_DESC_HIGH, (desc_ptr.addr() >> 32) as u32);
     write_virtio_reg_4(VIRTIO_QUEUE_DRIVER_LOW, avail_ptr as u32);
