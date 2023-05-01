@@ -209,7 +209,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
     let ver = read_virtio_reg_4(VIRTIO_VERSION);
     let dev_id = read_virtio_reg_4(VIRTIO_DEVICE_ID);
     let ven_id = read_virtio_reg_4(VIRTIO_VENDOR_ID);
-    if magic != 0x74726976 || ver != 0x1 || dev_id != 0x2 || ven_id != 0x554d4551 {
+    if magic != 0x74726976 || ver != 0x2 || dev_id != 0x2 || ven_id != 0x554d4551 {
         return Err("Device info is incompatible.");
     }
 
