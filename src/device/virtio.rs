@@ -61,23 +61,32 @@ enum VirtioDeviceStatus {
 // Feature bits 0-23 specific to device type.
 // bits 24-37 reserved.
 // bits 38+ reserved.
-const VIRTIO_BLK_F_BARRIER: u32 = 0x0; // legacy
-const VIRTIO_BLK_F_SIZE_MAX: u32 = 0x1;
-const VIRTIO_BLK_F_SEG_MAX: u32 = 0x2;
-const VIRTIO_BLK_F_GEOMETRY: u32 = 0x4;
-const VIRTIO_BLK_F_RO: u32 = 0x5;
-const VIRTIO_BLK_F_BLK_SIZE: u32 = 0x6;
-const VIRTIO_BLK_F_SCSI: u32 = 0x7;   // legacy
-const VIRTIO_BLK_F_FLUSH: u32 = 0x9;
-const VIRTIO_BLK_F_TOPOLOGY: u32 = 0xa;
-const VIRTIO_BLK_F_CONFIG_WCE: u32 = 0xb; // Dev can toggle (write through : write back) cache.
-const VIRTIO_BLK_F_DISCARD: u32 = 0xd;
-const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 0xe;
+const VIRTIO_BLK_F_BARRIER: u32 = 0; // legacy
+const VIRTIO_BLK_F_SIZE_MAX: u32 = 1;
+const VIRTIO_BLK_F_SEG_MAX: u32 = 2;
+const VIRTIO_BLK_F_GEOMETRY: u32 = 4;
+const VIRTIO_BLK_F_RO: u32 = 5;
+const VIRTIO_BLK_F_BLK_SIZE: u32 = 6;
+const VIRTIO_BLK_F_SCSI: u32 = 7;   // legacy
+const VIRTIO_BLK_F_FLUSH: u32 = 9;
+const VIRTIO_BLK_F_TOPOLOGY: u32 = 10;
+const VIRTIO_BLK_F_CONFIG_WCE: u32 = 11; // Dev can toggle (write through : write back) cache.
+const VIRTIO_BLK_F_MQ: u32 = 12;
+const VIRTIO_BLK_F_DISCARD: u32 = 13;
+const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
+const VIRTIO_BLK_F_ANY_LAYOUT: u32 = 27;
+const VIRTIO_RING_F_EVENT_IDX: u32 = 28;
+const VIRTIO_RING_F_INDIRECT_DESC: u32 = 29;
 
 // Clear these bits during feat negotiation.
-static DEVICE_FEATURE_CLEAR: [u32; 2] = [
+static DEVICE_FEATURE_CLEAR: [u32; 7] = [
     VIRTIO_BLK_F_RO,
     VIRTIO_BLK_F_SCSI,
+    VIRTIO_BLK_F_WRITE_ZEROES,
+    VIRTIO_BLK_F_MQ,
+    VIRTIO_BLK_F_ANY_LAYOUT,
+    VIRTIO_RING_F_EVENT_IDX,
+    VIRTIO_RING_F_INDIRECT_DESC,
 ];
 
 // Block request types
@@ -185,8 +194,10 @@ fn read_virtio_reg_4(offset: usize) -> u32 {
 }
 
 fn write_virtio_reg_4(offset: usize, data: u32) {
+    let ptr = (VIRTIO_BASE + offset) as *mut u32;
+    println!("Writing addr: {:?} with: {:#02x}", ptr, data);
     unsafe {
-        ((VIRTIO_BASE + offset) as *mut u32).write_volatile(data)
+        ptr.write_volatile(data)
     }
 }
 
