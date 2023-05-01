@@ -3,17 +3,14 @@
 
 // extern crate alloc;
 
-use alloc::boxed::Box;
-use alloc::collections::vec_deque::*;
+use alloc::collections::{vec_deque::*, BTreeMap};
+use alloc::rc::Rc;
+// TODO ^ is this the right thing to use for blocking things?
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
 use core::cell::OnceCell;
-use alloc::rc::Rc;
-// TODO ^ is this the right thing to use for blocking things?
 
-// use crate::hw::HartContext;
-// use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
 use crate::vm::VmError;
 use crate::hw::riscv::read_tp;
@@ -29,12 +26,10 @@ pub mod blocking;
 use blocking::*;
 // This should be visible externally
 
-// mod pid;
-// use crate::process::pid::*;
-// // We want to be able to use pid stuff, but nobody above us needs it
+pub mod initialization;
 
 mod scheduler;
-use crate::process::scheduler::ProcessQueue;
+use scheduler::ProcessQueue;
 
 #[allow(unused_variables)]
 mod syscall;
@@ -102,33 +97,32 @@ fn get_running_process() -> Process {
     restore_gp_info64().current_process
 }
 
-pub trait ProcessFileAbstraction {}
-// ^ TODO better name for this
-//
-// Basically this is what linux would have corresponding to a file
-// descriptor
-
-pub struct ProcessHeldResource
+pub enum ProcessState<T>
+where T: BlockAccess + ?Sized
 {
-    process_rid: usize,
-    held_resource: Box<dyn ProcessFileAbstraction>
-}
-// TODO same deal here, basically this is what a Process struct owns
-// when they hold a file or a blocking resource or whatever
-
-pub enum ProcessState {
     Uninitialized,              // do not attempt to run
     Unstarted,                  // do not attempt to restore regs
     Ready,                      // can run, restore args
     Running,                    // is running, don't use elsewhere
     // ^ is because ownership alone is risky to ensure safety accross
     // context switches
-    Wait(Rc<dyn Blocking<dyn Resource>>, ReqType),       // blocked on on something ^ Block manages
-    // mut for us, so Rc's const refs are fine. Is this the right type
-    // of indirection? Regular references require gross lifetime stuff
-    // that is not contained to this module, so I want to avoid that.
+    Blocked(Rc<Block<T, dyn Blockable<T>>>),       // blocked on on something
     Sleep(u64),               // out of the running for a bit
     Dead,                       // do not run (needed?)
+}
+
+struct Resource<T>
+where T: BlockAccess + ?Sized
+{
+    pair: (
+        ReqId<T>,
+        Rc<Block<T, dyn Blockable<T>>>
+    )
+}
+
+struct ResourceList
+{
+    contents: BTreeMap<usize, Resource<dyn BlockAccess>>,
 }
 
 /// A process. The there is a real possiblity of this being largly
@@ -137,265 +131,20 @@ pub struct Process {
     saved_pc: usize,            // uninit with 0
     saved_sp: usize,            // uninit with 0
     id: usize,                  // uninit with 0
-    state: ProcessState,        // use uninit state
+    state: ProcessState<dyn BlockAccess>,        // use uninit state
     pgtbl: PageTable,                     // uninizalied with null
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
     // TODO consider this as a OnceCell
-    held_resources: MaybeUninit<VecDeque<ProcessHeldResource>>
+    resource_id_gen: IdGenerator,
+    held_resources: MaybeUninit<ResourceList>
+    // ^ What are we holding and who do we return it to
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
 }
 
 impl Process {
-    /// Construct a new process. Notably does not allocate anything or
-    /// mean anything until you initialize it.
-    pub fn new_uninit() -> Self {
-        let out = Self {
-            id: 0,
-            state: ProcessState::Uninitialized,
-            pgtbl: PageTable::new(null_mut()),
-            phys_pages: MaybeUninit::uninit(),
-            held_resources: MaybeUninit::uninit(),
-            saved_pc: 0,
-            saved_sp: 0,
-        };
-        out
-    }
-
-    pub fn initialize64(&mut self, elf: &ELFProgram) -> Result<(), ELFError> {
-        // Doesn't assert uninitialized state so you can do a write over of an existing process
-
-        match self.state {
-            ProcessState::Uninitialized => {
-                self.id = generate_new_pid();
-                let pt = request_phys_page(1)
-                    .expect("Could not allocate a page table for a new process.");
-                self.pgtbl = PageTable::new(pt.start());
-                self.phys_pages.write(VecDeque::new());
-                self.held_resources.write(VecDeque::new());
-                unsafe {
-                    self.phys_pages.assume_init_mut().push_back(pt);
-                }
-            },
-            ProcessState::Running => {
-                panic!("Tried to re-initialize a running process!");
-            },
-            _ => {},
-        }
-
-        self.populate_pagetable64(elf)?;
-        match self.map_kernel_text() {
-            Ok(_) => {},
-            Err(_) => {
-                panic!("Failed to map kernel text into process space!");
-            }
-        }
-        self.saved_pc = elf.header.entry;
-        self.state = ProcessState::Unstarted;
-        Ok(())
-    }
-
-    // TODO is this the right error type?
-    fn map_kernel_text(&mut self) -> Result<(), VmError> {
-        // This is currently a large copy of kpage_init with a few tweaks
-        page_map(
-            self.pgtbl,
-            text_start(),
-            text_start(),
-            text_end().addr() - text_start().addr(),
-            kernel_process_flags(true, false, true)
-        )?;
-        // log!(
-        //     Debug,
-        //     "Sucessfully mapped kernel text into process pgtable..."
-        // );
-
-        page_map(
-            self.pgtbl,
-            text_end(),
-            text_end() as *mut usize,
-            rodata_end().addr() - text_end().addr(),
-            kernel_process_flags(true, false, false),
-        )?;
-        // log!(
-        //     Debug,
-        //     "Succesfully mapped kernel rodata into process pgtable..."
-        // );
-
-        page_map(
-            self.pgtbl,
-            rodata_end(),
-            rodata_end() as *mut usize,
-            data_end().addr() - rodata_end().addr(),
-            kernel_process_flags(true, true, false),
-        )?;
-        // log!(
-        //     Debug,
-        //     "Succesfully mapped kernel data into process pgtable..."
-        // );
-
-        // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
-        // problem.
-        let base = stacks_start();
-        for s in 0..NHART {
-            let stack = unsafe { base.byte_add(PAGE_SIZE * (1 + s * 3)) };
-            page_map(
-                self.pgtbl,
-                stack,
-                stack,
-                PAGE_SIZE * 2,
-                kernel_process_flags(true, true, false),
-            )?;
-        //     log!(
-        //         Debug,
-        //         "Succesfully mapped kernel stack {} into process pgtable...",
-        //         s
-        //     );
-        }
-
-        // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
-        // problem.
-        let base = intstacks_start();
-        for i in 0..NHART {
-            let m_intstack = unsafe { base.byte_add(PAGE_SIZE * (1 + i * 4)) };
-            // Map hart i m-mode handler.
-            page_map(
-                self.pgtbl,
-                m_intstack,
-                m_intstack,
-                PAGE_SIZE,
-                kernel_process_flags(true, true, false),
-            )?;
-            // Map hart i s-mode handler
-            let s_intstack = unsafe { m_intstack.byte_add(PAGE_SIZE * 2) };
-            page_map(
-                self.pgtbl,
-                s_intstack,
-                s_intstack,
-                PAGE_SIZE,
-                kernel_process_flags(true, true, false),
-            )?;
-            // log!(
-            //     Debug,
-            //     "Succesfully mapped interrupt stack for hart {} into process pgtable...",
-            //     i
-            // );
-        }
-
-        page_map(
-            self.pgtbl,
-            bss_start(),
-            bss_start(),
-            bss_end().addr() - bss_start().addr(),
-            kernel_process_flags(true, true, false),
-        )?;
-        // log!(Debug, "Succesfully mapped kernel bss into process...");
-
-        page_map(
-            self.pgtbl,
-            bss_end(),
-            bss_end(),
-            memory_end().addr() - bss_end().addr(),
-            kernel_process_flags(true, true, false),
-        )?;
-        // log!(Debug, "Succesfully mapped kernel heap into process...");
-
-        Ok(())
-    }
-
-
-    // TODO better error type here?
-    /// Copies the LOAD segment memory layout from the elf to the
-    /// program. This is not the only initialization step.
-    ///
-    /// This also setups up the program stack and sets saved_sp
-    fn populate_pagetable64(&mut self, elf: &ELFProgram) -> Result<(), ELFError>{
-        assert!(elf.header.program_entry_size as usize == size_of::<ProgramHeaderSegment64>(),
-                "Varying ELF entry size expectations.");
-
-        let num = elf.header.num_program_entries;
-        let ptr = unsafe {
-            elf.source.add(elf.header.program_header_pos)
-                as *const ProgramHeaderSegment64
-        };
-        for i in 0..num {
-            let segment = unsafe { *ptr.add(i as usize) };
-            if segment.seg_type != ProgramSegmentType::Load { continue; }
-            else if segment.vmem_addr < 0x1000  { return Err(ELFError::MappedZeroPage) }
-            else if segment.vmem_addr >= text_start().addr() as u64 &&
-                segment.vmem_addr <= text_end().addr() as u64 {
-                    return Err(ELFError::MappedKernelText)
-                }
-            else if segment.size_in_file != segment.size_in_memory {return Err(ELFError::InequalSizes)}
-            else if segment.alignment > 0x1000 {return Err(ELFError::ExcessiveAlignment)}
-
-            let n_pages = (segment.size_in_memory + (0x1000 - 1)) / 0x1000;
-            let pages = match request_phys_page(n_pages as usize) {
-                Ok(p) => {p},
-                Err(_) => {return Err(ELFError::FailedAlloc)}
-            };
-            unsafe {
-                copy_nonoverlapping(elf.source.add(segment.file_offset as usize),
-                                    pages.start() as *mut u8,
-                                    segment.size_in_file as usize);
-            }
-            let flags = user_process_flags(
-                (segment.flags as u16) & PROG_SEG_READ != 0,
-                (segment.flags as u16) & PROG_SEG_WRITE != 0,
-                (segment.flags as u16) & PROG_SEG_EXEC != 0
-            );
-
-            match page_map(
-                self.pgtbl,
-                VirtAddress::from(segment.vmem_addr as *mut usize),
-                PhysAddress::from(pages.start() as *mut usize),
-                n_pages as usize,
-                flags
-            ) {
-                Ok(_) => {},
-                Err(_) => {return Err(ELFError::FailedMap)}
-            }
-            unsafe {
-                self.phys_pages.assume_init_mut().push_back(pages);
-            }
-        }
-
-        // TODO what does process heap look like? depends on our syscalls I guess?
-        // We would map it here if we had any
-
-        // map the process stack. They will get 2 pages for now
-        const STACK_PAGES: usize = 2;
-        let stack_pages = match request_phys_page(STACK_PAGES) {
-            Ok(p) => {p},
-            Err(_) => {
-                return Err(ELFError::FailedAlloc);
-            }
-        };
-        // TODO guard page? you'll get a page fault anyway?
-        let process_stack_location = unsafe {
-            text_start().sub(0x1000 * STACK_PAGES)
-        };
-        // under the kernel text
-        match page_map(
-            self.pgtbl,
-            VirtAddress::from(process_stack_location),
-            PhysAddress::from(stack_pages.start()),
-            STACK_PAGES,
-            user_process_flags(true, true, false)
-        ) {
-            Ok(_) =>{},
-            Err(_) => {return Err(ELFError::FailedMap)}
-        }
-        self.saved_sp = stack_pages.end() as usize;
-        unsafe {
-            self.phys_pages.assume_init_mut().push_back(stack_pages);
-        }
-
-        Ok(())
-    }
-
     /// This is a (kind of) context switch
     ///
     /// This consumes the process from the rust perspective, but it is

@@ -6,10 +6,11 @@
 #![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
-#![feature(once_cell)]
 #![feature(unsized_fn_params)]
 #![feature(box_into_inner)]
 #![feature(never_type)]
+#![feature(closure_lifetime_binder)]
+#![feature(drain_filter)]
 #![allow(dead_code)]
 use core::cell::OnceCell;
 use core::mem::MaybeUninit;

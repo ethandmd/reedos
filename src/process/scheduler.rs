@@ -36,36 +36,12 @@ impl ProcessQueue {
                     return head
                 },
 
-                // found something we might be able to run, check. If
-                // ready, run. If not, insert at the end of the queue
-                ProcessState::Wait(resource, req_type)  => {
-                    match req_type {
-                        blocking::ReqType::Read => {
-                            match (*(*resource).as_ref()).acquire_read() {
-                                Some(read_guard) => {
-                                    // Got the resource we want!
-                                    todo!("Add to process held resources")
-                                },
-                                None => {
-                                    // couldn't get the resource, keep blocking
-                                    continue
-                                },
-                            }
-                        },
-                        blocking::ReqType::Write => {
-                            match (*(*resource).as_ref()).acquire_write() {
-                                Some(read_guard) => {
-                                    // Got the resource we want!
-                                    todo!("Add to process held resources")
-                                },
-                                None => {
-                                    // couldn't get the resource, keep blocking
-                                    continue
-                                },
-                            }
-
-                        },
-                    }
+                // Blocked processes should not be owned by the
+                // queue. They should be (indirectly) owned by the
+                // Block, through the continuation associated with
+                // their request
+                ProcessState::Blocked(_)  => {
+                    panic!("Run queue should not contain blocked processes!")
                 },
 
                 ProcessState::Sleep(cmp_time) => {

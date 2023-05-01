@@ -3,6 +3,13 @@
 
 use alloc::collections::BTreeSet;
 
+// TODO consider making this work like a guard, where when you drop an
+// Id type (roughly transparent over a usize), then it auto-frees the
+// id. Currently not implemented, as that requires each Id type to
+// store a mut ptr (or a method of geting that) to the generator it is
+// from. This is a lot of unsafe infrastructure for this, so I am not
+// doing it now.
+
 pub struct IdGenerator {
     counter: usize,
     in_use: BTreeSet<usize>,
