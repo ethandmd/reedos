@@ -1,5 +1,5 @@
 //! Kernel trap handlers.
-use crate::device::{clint, plic, uart};
+use crate::device::{clint, plic, uart, virtio};
 use crate::hw::{riscv, param};
 
 use crate::log;
@@ -80,6 +80,7 @@ fn s_extern() {
     };
 
     const UART_IRQ: u32 = param::UART_IRQ as u32;
+    const VIRTIO_IRQ: u32 = param::VIRTIO_IRQ as u32;
     match irq {
         0 => {
             // reserved for "No interrupt" according to the
@@ -108,6 +109,9 @@ fn s_extern() {
                 plic::PLIC.get().unwrap().complete(irq)
             };
 
+        },
+        VIRTIO_IRQ => {
+            virtio::virtio_blk_intr();
         },
         _ => {
             panic!("Uncaught PLIC exception.")
