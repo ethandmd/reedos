@@ -49,6 +49,9 @@ pub const VIRTIO_BASE:usize = 0x10001000;
 /// VIRTIO size.
 pub const VIRTIO_SIZE: usize = 0x4000;
 
+/// VIRTIO interrupt request number.
+pub const VIRTIO_IRQ: usize = 1;
+
 /// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;
 

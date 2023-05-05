@@ -19,7 +19,7 @@
 
 use core::cell::OnceCell; // for PLIC, write once read many times
 use crate::hw::riscv;
-use crate::hw::param::{PLIC_BASE, UART_IRQ};
+use crate::hw::param::{PLIC_BASE, UART_IRQ, VIRTIO_IRQ};
 
 // ^ constants for PLIC_BASE & device interrupt (IRQ) priority locations.
 
@@ -38,7 +38,7 @@ pub fn global_init() {
 
     unsafe {
         base_addr.add(UART_IRQ).write_volatile(1);
-        // Would do virtio here
+        base_addr.add(VIRTIO_IRQ).write_volatile(1);
     }
 
     // initialize PLIC
@@ -55,8 +55,7 @@ pub fn global_init() {
 pub fn local_init() {
 
     //  set enable bits for this hart's S-mode
-    // currently just for Uart
-    let bit_mask: u32 = 1 << UART_IRQ;
+    let bit_mask: u32 = (1 << UART_IRQ) | (1 << VIRTIO_IRQ);
 
     unsafe {
         // call the write to Plic magic locations for the enabled bits.
