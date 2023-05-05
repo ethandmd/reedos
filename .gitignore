@@ -10,6 +10,7 @@
 .vscode/
 .idea/
 .direnv/
+*.swp
 
 # Presentation stuff
 /docs/presentation/*
