@@ -5,12 +5,13 @@
 
 // Also a nice walkthrough: https://www.redhat.com/en/blog/virtio-devices-and-drivers-overview-headjack-and-phone
 
-use crate::hw::param::PAGE_SIZE;
+use crate::hw::riscv::io_barrier;
+use crate::lock::mutex::Mutex;
 use crate::alloc::{vec::Vec, boxed::Box};
 use core::cell::OnceCell;
 use core::mem::size_of;
 
-static mut BLK_DEV: OnceCell<SplitVirtQueue> = OnceCell::new();
+static mut BLK_DEV: OnceCell<Mutex<SplitVirtQueue>> = OnceCell::new();
 
 // Also checkout: https://wiki.osdev.org/Virtio
 // Define the virtio constants for MMIO.
@@ -92,23 +93,22 @@ static DEVICE_FEATURE_CLEAR: [u32; 7] = [
     VIRTIO_RING_F_INDIRECT_DESC,
 ];
 
-// Block request types
-const VIRTIO_BLK_T_IN: u32 = 0;
-const VIRTIO_BLK_T_OUT: u32 =  1;
-const VIRTIO_BLK_T_FLUSH: u32 = 4;
-const VIRTIO_BLK_T_DISCARD: u32 = 11;
-const VIRTIO_BLK_T_WRITE_ZEROES: u32 = 13;
-
 // Block request status
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
+
+const RING_SIZE: usize = 2; // Power of 2.
 
 // VirtQueues; Section 2.5.
 // 
 // Based on (legacy supported) splitqueue: Section 2.6.
 // Device versions <= 0x1 only have split queue.
 struct SplitVirtQueue {
+    // Free desc table tracker
+    free: Box<[u8]>,
+    // Owner of all block requests.
+    reqs: Box<[VirtBlkReq]>,
     // Descriptor Area: describe buffers (make fixed array?)
     desc: Box<[VirtQueueDesc]>,
     // Driver Area (aka Available ring): extra info from driver to device
@@ -122,14 +122,30 @@ struct SplitVirtQueue {
 impl SplitVirtQueue {
     // Ptr's must have been allocated with global alloc.
     fn new() -> Self {
-        let desc = Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueDesc>()).into_boxed_slice();
-        let avail = Box::new(VirtQueueAvail::new());//Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueAvail>()).into_boxed_slice();
-        let used = Box::new(VirtQueueUsed::new());//Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueDesc>()).into_boxed_slice();
-        Self { desc, avail, used }
+        let free = Box::new([1; RING_SIZE]);
+        let reqs = (0..RING_SIZE).map(|_| VirtBlkReq::default()).collect::<Vec<VirtBlkReq>>().into_boxed_slice();
+        let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
+        let avail = Box::new(VirtQueueAvail::new());
+        let used = Box::new(VirtQueueUsed::new());
+        Self { free, reqs, desc, avail, used }
     }
 
     fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
         (self.desc.as_ptr(), &*self.avail, &*self.used)
+    }
+
+    fn alloc_desc(&mut self) -> Option<usize> {
+        for (idx, elt) in self.free.into_iter().enumerate() {
+            if *elt == 1 {
+                self.free[idx] = 0;
+                return Some(idx);
+            }
+        }
+        None
+    }
+
+    fn free_desc(&mut self, idx: usize) {
+        self.free[idx] = 1;
     }
 }
 
@@ -145,14 +161,13 @@ enum VirtQueueDescFeat {
 // Note that we don't need IOMMU since this is all in QEMU process.
 // If this were a real physical device, then we need IOMMU.
 #[repr(C)]
+#[derive(Default)]
 struct VirtQueueDesc {
     addr: usize, // Specifically little endian 64
     len: u32,
     flags: u16,
     next: u16,
 }
-
-const RING_SIZE: usize = 2; // Power of 2.
 
 // Section 2.6.6
 // ** Ring queue size is power of 2 and avail, used
@@ -199,11 +214,26 @@ impl From<u64> for VirtQueueUsedElem {
 }
 
 #[repr(C)]
+struct BlockBuffer {
+    data: Vec<u8>,
+    offset: u64,
+}
+
+// Block request types
+enum VirtBlkReqType {
+    In = 0,
+    Out =  1,
+    Flush = 4,
+    Discard = 11,
+    WriteZeroes = 13,
+}
+#[repr(C)]
+#[derive(Default)]
 struct VirtBlkReq {
-    flavor: u32, // BLK_T_IN, BLK_T_OUT, ..
+    rtype: u32, // VirtBlkReqType
     reserved: u32,
     sector: u64,
-    data: Vec<u8>, // We'll see how this ages
+    data: usize, // Let's pretend this is `u8 data[]` in C.
     status: u8, // BLK_S_OK, ...
 }
 
@@ -279,7 +309,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
     let hey = Box::new(0xdeadbeef_u32);
     println!("{:?}", hey);
     let (desc_ptr, avail_ptr, used_ptr) = sq.get_ring_ptrs();
-    match unsafe { BLK_DEV.set(sq) } {
+    match unsafe { BLK_DEV.set(Mutex::new(sq)) } {
         Ok(_) => (),
         Err(_) => { return Err("Unable to init memory for ring queues."); },
     }
@@ -304,4 +334,64 @@ pub fn virtio_init() -> Result<(), &'static str> {
     Ok(())
 }
 
-fn virtio_blk_write(data: Vec<u8>) {}
+// Section 2.6.13
+fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
+    let mut sq = match unsafe { BLK_DEV.get() } {
+        Some(sq) => sq.lock(),
+        None => { return Err("Uninitialized blk device."); },
+    };
+
+    // Place buffers into desc table; Section 2.6.13.1
+    // We need one desc for blk_req, one for buf data.
+    let head_idx = match sq.alloc_desc() {
+        Some(i) => i,
+        None => { return Err("Desc table full."); },
+    };
+    let data_idx = match sq.alloc_desc() {
+        Some(i) => i,
+        None => { return Err("Desc table full."); },
+    };
+    // Fill in Blk Req
+    sq.reqs[head_idx] = VirtBlkReq {
+        rtype: VirtBlkReqType::Out as u32, 
+        reserved: 0,
+        sector: buf.offset * 512,
+        data: 0,
+        status: 0,
+    };
+    // Alternatively we use one descriptor of blk_req header + data.
+    // Fill in Desc for Blk Req
+    let head_ptr = &sq.reqs[head_idx] as *const VirtBlkReq;
+    sq.desc[head_idx] = VirtQueueDesc { 
+        addr: head_ptr.addr(),
+        len: size_of::<VirtBlkReq>() as u32,
+        flags: VirtQueueDescFeat::Next as u16,
+        next: data_idx as u16,
+    };
+    // Fill in Desc for data.
+    sq.desc[data_idx] = VirtQueueDesc {
+        addr: buf.data.as_ptr().addr(),
+        len: buf.data.len() as u32,
+        flags: VirtQueueDescFeat::Write as u16,
+        next: 0,
+    };
+
+    // Place index of desc chain head in avail ring. Section 2.6.13.2
+    let avail_idx = (sq.avail.idx % RING_SIZE as u16) as usize; // I know. Rust and its types.
+    sq.avail.ring[avail_idx] = head_idx as u16;
+
+    // Memory barrier to ensure device sees updated desc table.
+    // Could probably use core::sync::atomic::fence(Ordering::Seqcst) but idk about rust sometimes.
+    io_barrier();
+
+    // Incr avail ring index. Section 2.6.13.3
+    sq.avail.idx += 1; // Or += num desc heads if we are batching.
+
+    io_barrier();
+
+    // Send available buffer notification to device; Section 2.6.13.4
+    // Without negotating VIRTIO_F_NOTIFICATION_DATA write queue index here; Section 4.2.3.3
+    write_virtio_reg_4(VIRTIO_QUEUE_NOTIFY, 0);
+
+    Ok(())
+}
