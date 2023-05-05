@@ -6,7 +6,6 @@
 #![feature(sync_unsafe_cell)]
 #![feature(panic_info_message)]
 #![feature(strict_provenance)]
-#![feature(once_cell)]
 #![feature(unsized_fn_params)]
 #![feature(box_into_inner)]
 #![feature(never_type)]
@@ -161,6 +160,7 @@ fn main() -> ! {
             // release the waiting harts
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
+        process::test_process_uart_write();
     } else {
         // Do the init that can be independent and without global deps.
         trap::init();
@@ -174,9 +174,7 @@ fn main() -> ! {
         log!(Info, "Completed all hart{} local initialization", read_tp());
     }
 
-    // we want to test multiple processes with multiple harts
-    process::test_multiprocess_syscall();
-    // loop {}
+    loop {}
 
-    panic!("Reached the end of kernel main! Did the root process not start?");
+    // panic!("Reached the end of kernel main! Did the root process not start?");
 }

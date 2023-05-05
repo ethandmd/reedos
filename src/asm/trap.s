@@ -102,8 +102,15 @@ scall_asm:
         ## make quick space by using the sscratch stack without
         ## changing its value
         csrrw sp, sscratch, sp
-        addi sp, sp, -8
+        addi sp, sp, -64
         sd a0, (sp)
+        sd a1, 8(sp)
+        sd a2, 16(sp)
+        sd a3, 24(sp)
+        sd a4, 32(sp)
+        sd a5, 40(sp)
+        sd a6, 48(sp)
+        sd a7, 56(sp)
         ## we are on the sscratch stack and can clobber a0 freely. All
         ## others must be preserved
         jal scall_direct
@@ -115,6 +122,10 @@ scall_asm:
         beqz a0, dont_change_stack
 ### -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 ### This is the context switch
+###
+### there is code reuse from proc_space_to_kernel_space, but because
+### of stack changes, this cannot be made into a asm function for
+### reuse
 
         ## change stacks/page table here
         ld a0, (sp)
@@ -165,11 +176,32 @@ scall_asm:
 ### The program pc is in a0 and the program sp is in a1
 
 dont_change_stack:
+        ld a0, (sp)
+        ld a1, 8(sp)
+        ld a2, 16(sp)
+        ld a3, 24(sp)
+        ld a4, 32(sp)
+        ld a5, 40(sp)
+        ld a6, 48(sp)
+        ld a7, 56(sp)
+        addi sp, sp, 64
+
+        csrrw sp, sscratch, sp  #program stack
 
         addi sp, sp, -8
-        ld ra, (sp)
+        sd ra, (sp)
         ## call the main handler
         jal scall_rust
 
-        ## TODO do we need to manually increment sepc? unclear
+
+        ## this is odd in terms of name, but is already saved for us,
+        ## so might as well use it
+        csrr ra, sepc
+        addi ra, ra, 4
+        csrw sepc, ra
+
+        ld ra, (sp)
+        addi sp, sp, 8
+
+
         sret

@@ -197,6 +197,10 @@ impl PhysPageExtent {
             self.head.addr.byte_add(self.num * PAGE_SIZE)
         }
     }
+
+    pub fn length(&self) -> usize {
+        self.num * PAGE_SIZE
+    }
 }
 
 impl Drop for PhysPageExtent {

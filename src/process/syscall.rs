@@ -2,7 +2,59 @@
 /// syscall.s for the asm half of this
 
 use core::arch::asm;
+use alloc::slice;
+
+use crate::device::uart;
 use super::*;
+
+/// This is called from asm proc_space_to_kernel_space, and handles
+/// the actions that should happen in kernel space on behalf of a
+/// process. We call that a "kernel excursion" and they *must* have
+/// standard rust contiguous program flow, so no further jumping
+/// about. Further they must call the asm kernel_space_to_proc_space
+/// when they are done.
+#[no_mangle]
+pub extern "C" fn kernel_excursion_rust() -> ! {
+    let proc_sp: usize;
+    unsafe {
+        asm!(
+            "mv {sp}, s3",
+            sp = out(reg) proc_sp
+        );
+    }
+    let mut gpi = restore_gp_info64();
+    gpi.current_process.saved_sp = proc_sp;
+    match gpi.cause {
+        GPCause::Read(_, _) => todo!("file read kernel excursion"),
+        GPCause::Write(fid, size) => {
+            assert!(fid == 1, "Currently hardwired uart out for processes");
+            let mut uart;
+            let input_range;
+            unsafe {
+                uart = uart::WRITER.lock();
+                let ppe = gpi.current_process.file_buffers
+                    .assume_init_ref().get(&fid)
+                    .unwrap();  // handled earlier
+                input_range = slice::from_raw_parts(ppe.start() as *mut u8, size)
+            }
+
+            for c in input_range {
+                uart.put(c.clone());
+            }
+
+            drop(uart);
+
+            let base_addr = gpi.current_process.pgtbl.base as usize;
+            save_gp_info64(gpi);
+
+            extern "C" { pub fn kernel_space_to_proc_space(sp: usize, pgtbl: usize) -> !; }
+            unsafe {
+                kernel_space_to_proc_space(proc_sp, base_addr);
+            }
+        },
+        GPCause::None => panic!("Kernel excursion without cause"),
+    }
+}
 
 /// System call rust handler. This is called from scall_asm. See there
 /// for calling convention info.
@@ -32,7 +84,63 @@ pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
                 );
             }
             process_pause(proc_pc, proc_sp, 0); // cause 0, explicit yield
-        }
+        },
+        // -----------------------------------------------------------
+        // File stuff
+        READ | WRITE => {
+            // this is a file operation, we are in the process space
+            //
+            // a0: file id
+            // a1: in/out buffer addr in the process
+            // a2: number of bytes to read
+
+            if a2 > PAGE_SIZE {
+                todo!("Oversize syscall read")
+            }
+
+            // see the comment on scall_direct for why we have these
+            let proc_pc: usize;
+            unsafe {
+                asm!(
+                    "mv {pc}, s2",
+                    pc = out(reg) proc_pc,
+                );
+            }
+
+            let mut gpi = restore_gp_info64();
+            let proc = &mut gpi.current_process;
+
+            // proc.saved_sp = proc_sp; // not sure I need this
+            proc.saved_pc = proc_pc + 4;
+
+            let buffer_range;
+            unsafe {
+                let buf = proc.file_buffers.assume_init_ref().get(&a0)
+                    .expect("Read called on unknown fid");
+                buffer_range = slice::from_raw_parts_mut(buf.start() as *mut u8, a2);
+            }
+            match a7 {
+                READ => {
+                    todo!("populate the process file buffer according to fid");
+
+                },
+                WRITE => unsafe {
+                    let input_range = slice::from_raw_parts(a1 as *mut u8, a2);
+                    buffer_range.copy_from_slice(input_range);
+                    // the data is now in the kernel buffer for that file, we can move to kernel space
+                    gpi.cause = GPCause::Write(a0, a2);
+                    save_gp_info64(gpi);
+
+                    extern "C" { pub fn proc_space_to_kernel_space(); }
+                    proc_space_to_kernel_space();
+                    // this is a kernel excursion, see
+                    // trampoline.s and the function above
+                },
+                _ => panic!("Wrote to a7 in syscall handler")
+            }
+        },
+        // -----------------------------------------------------------
+        // Other
         _ => {
             panic!("Uncaught system call: {}", a7);
         }
@@ -62,9 +170,11 @@ pub extern "C" fn scall_direct(a0: usize, a1: usize, a2: usize, a3: usize,
                                a4: usize, a5: usize, a6: usize, a7: usize)
                                -> usize {
     match a7 {
-        SCHED_YIELD => {
-            1
-        },
+        SCHED_YIELD => 1,
+
+        READ => 0,
+        WRITE => 0,
+
         _ => {
             0
         }

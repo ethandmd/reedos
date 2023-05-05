@@ -5,6 +5,7 @@
 
 // use alloc::boxed::Box;
 use alloc::collections::vec_deque::*;
+use alloc::collections::btree_map::*;
 use core::assert;
 use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
@@ -56,9 +57,9 @@ pub fn init_process_structure() {
 // use hart local info to get the currently running process
 //
 // this is a *MOVE* of the process. Handle elsewhere
-fn get_running_process() -> Process {
-    restore_gp_info64().current_process
-}
+// fn get_running_process() -> Process {
+//     restore_gp_info64().current_process
+// }
 
 #[derive(Debug)]
 pub enum ProcessState {
@@ -84,8 +85,7 @@ pub struct Process {
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
     // TODO consider this as a OnceCell
-
-    // sleep_time: usize           // uninit with 0, only valid with sleep state
+    file_buffers: MaybeUninit<BTreeMap<usize, PhysPageExtent>>,
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
@@ -101,6 +101,7 @@ impl Process {
             state: ProcessState::Uninitialized,
             pgtbl: PageTable::new(null_mut()),
             phys_pages: MaybeUninit::uninit(),
+            file_buffers: MaybeUninit::uninit(),
             saved_pc: 0,
             saved_sp: 0,
         };
@@ -108,8 +109,6 @@ impl Process {
     }
 
     pub fn initialize64(&mut self, elf: &ELFProgram) -> Result<(), ELFError> {
-        // Doesn't assert uninitialized state so you can do a write over of an existing process
-
         match self.state {
             ProcessState::Uninitialized => {
                 self.id = generate_new_pid();
@@ -117,14 +116,24 @@ impl Process {
                     .expect("Could not allocate a page table for a new process.");
                 self.pgtbl = PageTable::new(pt.start());
                 self.phys_pages.write(VecDeque::new());
+                self.file_buffers.write(BTreeMap::new());
                 unsafe {
                     self.phys_pages.assume_init_mut().push_back(pt);
+                    let fb = self.file_buffers.assume_init_mut();
+                    fb.insert(0, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process"));
+                    fb.insert(1, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process"));
+                    fb.insert(2, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process"));
                 }
             },
             ProcessState::Running => {
                 panic!("Tried to re-initialize a running process!");
             },
-            _ => {},
+            _ => {
+                todo!("Process overwriting init")
+            },
         }
 
         self.populate_pagetable64(elf)?;
@@ -365,7 +374,7 @@ impl Process {
         let saved_pc = self.saved_pc;
         let pgtbl_base = self.pgtbl.base as usize;
         let saved_sp = self.saved_sp;
-        let gpi = GPInfo::new(self);
+        let gpi = GPInfo::new(self, GPCause::None);
         save_gp_info64(gpi);
 
         unsafe {
@@ -396,7 +405,7 @@ impl Process {
         let saved_pc = self.saved_pc;
         let pgtbl_base = self.pgtbl.base as usize;
         let saved_sp = self.saved_sp;
-        let gpi = GPInfo::new(self);
+        let gpi = GPInfo::new(self, GPCause::None);
         save_gp_info64(gpi);
 
         unsafe {
@@ -416,13 +425,15 @@ impl Drop for Process {
         return_used_pid(self.id);
         // dropping the phys pages vector will automatically clean
         // those up
+        todo!("Check for a memory leak from Maybeuninit")
     }
 }
 
 /// Suspend process so that it can be restored/restarted later. Called
 /// from syscalls currently
 fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
-    let mut proc = get_running_process();
+    let gpi = restore_gp_info64();
+    let mut proc = gpi.current_process;
     proc.saved_pc = pc + 4;
     // ^ ecall doesn't automatically increment pc
     proc.saved_sp = sp;
@@ -456,7 +467,8 @@ fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
 
 #[no_mangle]
 pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
-    let proc = get_running_process();
+    let gpi = restore_gp_info64();
+    let proc = gpi.current_process;
     log!(Debug, "Process {} exited with code {}.", proc.id, exit_code);
     drop(proc);
     // ^ ensure that the never returning scheduler call doesn't extend
@@ -502,7 +514,7 @@ pub fn _test_process_syscall_basic() {
     proc.start();
 }
 
-pub fn test_multiprocess_syscall() {
+pub fn _test_multiprocess_syscall() {
     let bytes = include_bytes!("programs/syscall-basic/syscall-basic.elf");
     let program = ELFProgram::new64(&bytes[0] as *const u8);
     let mut proc = Process::new_uninit();
@@ -537,18 +549,14 @@ pub fn test_multiprocess_syscall() {
 
 }
 
-// TODO is there a better place for this stuff?
-// /// Moving to `mod process`
-// pub trait Resource {}
+pub fn test_process_uart_write() {
+    let bytes = include_bytes!("programs/uart-write/uart-write.elf");
+    let program = ELFProgram::new64(&bytes[0] as *const u8);
+    let mut proc = Process::new_uninit();
 
-// /// Moving to `mod <TBD>`
-// pub struct TaskList {
-//     head: Option<Box<Process>>,
-// }
-
-// /// Moving to `mod <TBD>`
-// pub struct TaskNode {
-//     proc: Option<Box<Process>>,
-//     prev: Option<Box<TaskNode>>,
-//     next: Option<Box<TaskNode>>,
-// }
+    match proc.initialize64(&program) {
+        Ok(_) => {},
+        Err(e) => {panic!("Couldn't start process: {:?}", e)}
+    }
+    proc.start();
+}

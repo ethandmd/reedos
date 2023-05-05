@@ -7,9 +7,17 @@ use alloc::boxed::Box;
 use crate::process::Process;
 use crate::hw::riscv::{write_gp, read_gp};
 
+#[derive(PartialEq, Eq)]
+pub enum GPCause {
+    Read(usize, usize),         // fid, size
+    Write(usize, usize),        // fid, size
+    None,
+}
+
 /// What do we need to restore when returning from a process
 pub struct GPInfo {
     pub current_process: Process,
+    pub cause: GPCause,
     // TODO consider moving the page table and the sp from the
     // sscratch stack to here
     //
@@ -19,9 +27,10 @@ pub struct GPInfo {
 }
 
 impl GPInfo {
-    pub fn new(current_process: Process) -> Self {
+    pub fn new(current_process: Process, cause: GPCause) -> Self {
         Self {
             current_process,
+            cause
         }
     }
 }
@@ -51,6 +60,7 @@ pub fn restore_gp_info64() -> GPInfo {
 pub fn hartlocal_info_interrupt_stack_init() {
     let gpi = GPInfo {
         current_process: Process::new_uninit(),
+        cause: GPCause::None,
     };
     save_gp_info64(gpi);
     unsafe {
