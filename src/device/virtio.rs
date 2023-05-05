@@ -1,11 +1,14 @@
 //! Access the virtio device through the mmio interface provided by QEMU.
 //! [Virtual I/O Device (VIRTIO) Specs](https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html)
+//! If we ever add an additional VIRTIO device, we will refactor this into a proper module for
+//! multiple device types.
 
 // Also a nice walkthrough: https://www.redhat.com/en/blog/virtio-devices-and-drivers-overview-headjack-and-phone
 
-use crate::vm::request_phys_page;
-use crate::alloc::vec::Vec;
+use crate::hw::param::PAGE_SIZE;
+use crate::alloc::{vec::Vec, boxed::Box};
 use core::cell::OnceCell;
+use core::mem::size_of;
 
 static mut BLK_DEV: OnceCell<SplitVirtQueue> = OnceCell::new();
 
@@ -107,34 +110,33 @@ const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 // Device versions <= 0x1 only have split queue.
 struct SplitVirtQueue {
     // Descriptor Area: describe buffers (make fixed array?)
-    desc: Vec<VirtQueueDesc>,
+    desc: Box<[VirtQueueDesc]>,
     // Driver Area (aka Available ring): extra info from driver to device
-    avail: Vec<VirtQueueAvail>,
+    avail: Box<VirtQueueAvail>,
     // Device Area (aka Used ring): extra info from device to driver
-    // * NEED PADDING HERE???? *
+    // * NEED PADDING HERE? *
     // pad: Vec<u8>,
-    used: Vec<VirtQueueUsed>,
+    used: Box<VirtQueueUsed>,
 }
 
 impl SplitVirtQueue {
     // Ptr's must have been allocated with global alloc.
-    fn new(
-        desc_ptr: *mut usize,
-        avail_ptr: *mut usize,
-        used_ptr: *mut usize,
-        ) -> Self {
-        let (len, cap) = (0x1000, 0x1000);
-        let desc = unsafe { Vec::from_raw_parts(desc_ptr as *mut VirtQueueDesc, len, cap) };
-        let avail = unsafe { Vec::from_raw_parts(avail_ptr as *mut VirtQueueAvail, len, cap) };
-        let used = unsafe { Vec::from_raw_parts(used_ptr as *mut VirtQueueUsed, len, cap) };
+    fn new() -> Self {
+        let desc = Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueDesc>()).into_boxed_slice();
+        let avail = Box::new(VirtQueueAvail::new());//Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueAvail>()).into_boxed_slice();
+        let used = Box::new(VirtQueueUsed::new());//Vec::with_capacity(PAGE_SIZE / size_of::<VirtQueueDesc>()).into_boxed_slice();
         Self { desc, avail, used }
+    }
+
+    fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
+        (self.desc.as_ptr(), &*self.avail, &*self.used)
     }
 }
 
 // VirtQueue Descriptor Table; Section 2.6.5.
 // Everything little endian.
-// * If flag is empty => read-only buffer. *
 enum VirtQueueDescFeat {
+    Ro = 0x0,         // BUffer is read only.
     Next = 0x1,       // Buffer continues into NEXT field.
     Write = 0x2,      // Buffer as device write-only.
     Indirect = 0x4,   // Buffer contains a list of buffer descriptors.
@@ -144,7 +146,7 @@ enum VirtQueueDescFeat {
 // If this were a real physical device, then we need IOMMU.
 #[repr(C)]
 struct VirtQueueDesc {
-    addr: u64, // Specifically little endian 64
+    addr: usize, // Specifically little endian 64
     len: u32,
     flags: u16,
     next: u16,
@@ -163,19 +165,37 @@ struct VirtQueueAvail {
     used_event: u16,        // Only if feature EVENT_INDEX is set.
 }
 
+impl VirtQueueAvail {
+    fn new() -> Self {
+        Self { flags: 0, idx: 0, ring: [0; RING_SIZE], used_event: 0 }
+    }
+}
+
 // Section 2.6.8
 #[repr(C)]
 struct VirtQueueUsed {
     flags: u16,
     idx: u16,
-    used_ring: [VirtQueueUsedElem; RING_SIZE],
+    used_ring: [u64; RING_SIZE], // Really [ VirtQueueUsed; RING_SIZE].
     avail_event: u16, // Only if feature EVENT_INDEX is set.
+}
+
+impl VirtQueueUsed {
+    fn new() -> Self {
+        Self { flags: 0, idx: 0, used_ring: [0_u64; RING_SIZE], avail_event: 0 }
+    }
 }
 
 #[repr(C)]
 struct VirtQueueUsedElem {
     id: u32,
     len: u32,
+}
+
+impl From<u64> for VirtQueueUsedElem {
+    fn from(num: u64) -> Self {
+        Self { id: (num >> 32) as u32, len: (num & 0xffff0000) as u32 }
+    }
 }
 
 #[repr(C)]
@@ -195,14 +215,12 @@ fn read_virtio_reg_4(offset: usize) -> u32 {
 
 fn write_virtio_reg_4(offset: usize, data: u32) {
     let ptr = (VIRTIO_BASE + offset) as *mut u32;
-    println!("Writing addr: {:?} with: {:#02x}", ptr, data);
     unsafe {
         ptr.write_volatile(data)
     }
 }
 
-// Device Initialization: Sections 3.1 (general) + 4.2.3 (mmio)
-// Currently testing this QEMU board device:
+// ONLY Block Device Initialization: Sections 3.1 (general) + 4.2.3 (mmio)
 pub fn virtio_init() -> Result<(), &'static str> {
     // Step 0: Read device info.
     let magic = read_virtio_reg_4(VIRTIO_MAGIC);
@@ -257,19 +275,13 @@ pub fn virtio_init() -> Result<(), &'static str> {
     }
 
     // iv. Allocate and zero queue. Must by physically contiguous.
-    let (desc_ptr, avail_ptr, used_ptr): (*mut usize, *mut usize, *mut usize);
-    if let Ok(buf) = request_phys_page(3) {
-        desc_ptr = buf.start();
-        avail_ptr = unsafe { desc_ptr.byte_add(0x1000) };
-        used_ptr = unsafe { avail_ptr.byte_add(0x1000) };
-        unsafe {
-            match BLK_DEV.set(SplitVirtQueue::new(desc_ptr, avail_ptr, used_ptr)) {
-                Ok(_) => {},
-                Err(_) => { return Err("Could not configure global BLK_DEV with 3 queues."); },
-            }
-        }
-    } else {
-        return Err("Could not allocated sufficient memory.");
+    let sq = SplitVirtQueue::new();
+    let hey = Box::new(0xdeadbeef_u32);
+    println!("{:?}", hey);
+    let (desc_ptr, avail_ptr, used_ptr) = sq.get_ring_ptrs();
+    match unsafe { BLK_DEV.set(sq) } {
+        Ok(_) => (),
+        Err(_) => { return Err("Unable to init memory for ring queues."); },
     }
 
     // v. Notife the device about queue size; write to QueueNum.
@@ -291,3 +303,5 @@ pub fn virtio_init() -> Result<(), &'static str> {
     write_virtio_reg_4(VIRTIO_STATUS, device_status);
     Ok(())
 }
+
+fn virtio_blk_write(data: Vec<u8>) {}
