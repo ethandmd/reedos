@@ -159,6 +159,9 @@ fn main() -> ! {
             println!("{:?}", e);
         }
 
+        log!(Debug, "Testing virtio blk write...");
+        device::virtio::test_blk_write();
+
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
         log!(Debug, "Successfuly initialized the process system...");
