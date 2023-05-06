@@ -105,6 +105,8 @@ const RING_SIZE: usize = 2; // Power of 2.
 // Based on (legacy supported) splitqueue: Section 2.6.
 // Device versions <= 0x1 only have split queue.
 struct SplitVirtQueue {
+    // As suggested in 2.6.14
+    last_seen_used: u16,
     // Free desc table tracker
     free: Box<[u8]>,
     // Owner of all block requests.
@@ -127,7 +129,7 @@ impl SplitVirtQueue {
         let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
         let avail = Box::new(VirtQueueAvail::new());
         let used = Box::new(VirtQueueUsed::new());
-        Self { free, reqs, desc, avail, used }
+        Self { last_seen_used: 0, free, reqs, desc, avail, used }
     }
 
     fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
@@ -144,8 +146,18 @@ impl SplitVirtQueue {
         None
     }
 
-    fn free_desc(&mut self, idx: usize) {
-        self.free[idx] = 1;
+    fn free_descs(&mut self, mut idx: usize) {
+        let next_flag = VirtQueueDescFeat::Next as u16;
+        loop {
+            if self.desc[idx].flags & next_flag != 0 {
+                self.free[idx] = 1;
+                let next = self.desc[idx].next as usize;
+                self.desc[idx] = VirtQueueDesc::default();
+                idx = next;
+            } else {
+                break;
+            }
+        }
     }
 }
 
@@ -191,17 +203,18 @@ impl VirtQueueAvail {
 struct VirtQueueUsed {
     flags: u16,
     idx: u16,
-    used_ring: [u64; RING_SIZE], // Really [ VirtQueueUsed; RING_SIZE].
+    ring: [VirtQueueUsedElem; RING_SIZE], // Really [ VirtQueueUsed; RING_SIZE].
     avail_event: u16, // Only if feature EVENT_INDEX is set.
 }
 
 impl VirtQueueUsed {
     fn new() -> Self {
-        Self { flags: 0, idx: 0, used_ring: [0_u64; RING_SIZE], avail_event: 0 }
+        Self { flags: 0, idx: 0, ring: [VirtQueueUsedElem::default(); RING_SIZE], avail_event: 0 }
     }
 }
 
 #[repr(C)]
+#[derive(Default, Copy, Clone)]
 struct VirtQueueUsedElem {
     id: u32,
     len: u32,
@@ -215,6 +228,7 @@ impl From<u64> for VirtQueueUsedElem {
 
 #[repr(C)]
 struct BlockBuffer {
+    ready: u8,
     data: Vec<u8>,
     offset: u64,
 }
@@ -357,7 +371,7 @@ fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
         reserved: 0,
         sector: buf.offset * 512,
         data: 0,
-        status: 0,
+        status: 0xff,
     };
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
@@ -393,5 +407,40 @@ fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
     // Without negotating VIRTIO_F_NOTIFICATION_DATA write queue index here; Section 4.2.3.3
     write_virtio_reg_4(VIRTIO_QUEUE_NOTIFY, 0);
 
+    let cond: *const u32 = sq.reqs[head_idx].status as *const u32;
+    drop(sq);
+    // Wait for device to process request.
+    while unsafe { *cond } != 0 {
+        // Figure this out l8r.
+    }
+    let mut sq = match unsafe { BLK_DEV.get() } {
+        Some(sq) => sq.lock(),
+        None => { return Err("Failed to re-acquire sq lock."); },
+    };
+    sq.free_descs(head_idx);
+
     Ok(())
+}
+
+pub fn virtio_blk_intr() {
+    let mut sq = match unsafe { BLK_DEV.get() } {
+        Some(sq) => sq.lock(),
+        None => { return; },
+    };
+    
+    // Borrowed from xv6, mimicking 2.6.14 in virtio 1.1
+    let int_status = read_virtio_reg_4(VIRTIO_INTERRUPT_STATUS);
+    write_virtio_reg_4(VIRTIO_INTERRUPT_ACK, int_status & 0x3);
+
+    while sq.last_seen_used != sq.used.idx {
+        io_barrier();
+        let used_idx = sq.last_seen_used % (RING_SIZE as u16);
+        let used_id = sq.used.ring[used_idx as usize].id as usize;
+
+        if sq.reqs[used_id].status != 0 {
+            panic!("virtio blk req status");
+        }
+
+        sq.last_seen_used += 1;
+    }
 }
