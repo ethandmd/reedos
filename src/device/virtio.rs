@@ -98,7 +98,7 @@ const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
 
-const RING_SIZE: usize = 2; // Power of 2.
+const RING_SIZE: usize = 32; // Power of 2.
 
 // VirtQueues; Section 2.5.
 // 
@@ -326,8 +326,6 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
     // iv. Allocate and zero queue. Must by physically contiguous.
     let sq = SplitVirtQueue::new();
-    let hey = Box::new(0xdeadbeef_u32);
-    println!("{:?}", hey);
     let (desc_ptr, avail_ptr, used_ptr) = sq.get_ring_ptrs();
     match unsafe { BLK_DEV.set(Mutex::new(sq)) } {
         Ok(_) => (),
@@ -371,6 +369,10 @@ fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
         Some(i) => i,
         None => { return Err("Desc table full."); },
     };
+    let stat_idx = match sq.alloc_desc() {
+        Some(i) => i,
+        None => { return Err("Desc table full."); },
+    };
     // Fill in Blk Req
     sq.reqs[head_idx] = VirtBlkReq {
         rtype: VirtBlkReqType::Out as u32, 
@@ -395,6 +397,13 @@ fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
     sq.desc[data_idx] = VirtQueueDesc {
         addr: buf.data.as_ptr().addr(),
         len: buf.data.len() as u32,
+        flags: VirtQueueDescFeat::Write as u16 | VirtQueueDescFeat::Next as u16,
+        next: stat_idx as u16,
+    };
+    // Fill in status block.
+    sq.desc[stat_idx] = VirtQueueDesc {
+        addr: (&mut buf.status as *mut u8).addr(),
+        len: size_of::<u8>() as u32,
         flags: VirtQueueDescFeat::Write as u16,
         next: 0,
     };
@@ -458,6 +467,6 @@ pub fn test_blk_write() {
     let mut buf = BlockBuffer { status: 0, ready: 0, data, offset: 1 };
     match write_blk_dev(&mut buf) {
         Ok(_) => (),
-        Err(e) => {println!("{}", e);},
+        Err(e) => {println!("Test blk write error: {}", e);},
     }
 }
