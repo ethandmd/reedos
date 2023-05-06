@@ -107,6 +107,8 @@ const RING_SIZE: usize = 2; // Power of 2.
 struct SplitVirtQueue {
     // As suggested in 2.6.14
     last_seen_used: u16,
+    // Track requests.
+    stat: Box<[usize]>,
     // Free desc table tracker
     free: Box<[u8]>,
     // Owner of all block requests.
@@ -124,12 +126,14 @@ struct SplitVirtQueue {
 impl SplitVirtQueue {
     // Ptr's must have been allocated with global alloc.
     fn new() -> Self {
+        let stat = Box::new([0; RING_SIZE]);
+        //(0..RING_SIZE).map(|_| BlockBuffer::default()).collect::<Vec<BlockBuffer>>().into_boxed_slice();
         let free = Box::new([1; RING_SIZE]);
         let reqs = (0..RING_SIZE).map(|_| VirtBlkReq::default()).collect::<Vec<VirtBlkReq>>().into_boxed_slice();
         let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
         let avail = Box::new(VirtQueueAvail::new());
         let used = Box::new(VirtQueueUsed::new());
-        Self { last_seen_used: 0, free, reqs, desc, avail, used }
+        Self { stat, last_seen_used: 0, free, reqs, desc, avail, used }
     }
 
     fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
@@ -227,7 +231,9 @@ impl From<u64> for VirtQueueUsedElem {
 }
 
 #[repr(C)]
-struct BlockBuffer {
+#[derive(Default)]
+pub struct BlockBuffer {
+    status: u8,
     ready: u8,
     data: Vec<u8>,
     offset: u64,
@@ -349,7 +355,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
 }
 
 // Section 2.6.13
-fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
+fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
         None => { return Err("Uninitialized blk device."); },
@@ -371,8 +377,11 @@ fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
         reserved: 0,
         sector: buf.offset * 512,
         data: 0,
-        status: 0xff,
+        status: 0,
     };
+    buf.ready = 0;
+    buf.status = 0xff;
+    sq.stat[head_idx] = (buf as *mut BlockBuffer).addr();
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
     let head_ptr = &sq.reqs[head_idx] as *const VirtBlkReq;
@@ -407,10 +416,9 @@ fn write_blk_dev(buf: &BlockBuffer) -> Result<(), &'static str>{
     // Without negotating VIRTIO_F_NOTIFICATION_DATA write queue index here; Section 4.2.3.3
     write_virtio_reg_4(VIRTIO_QUEUE_NOTIFY, 0);
 
-    let cond: *const u32 = sq.reqs[head_idx].status as *const u32;
     drop(sq);
     // Wait for device to process request.
-    while unsafe { *cond } != 0 {
+    while buf.ready != 1 {
         // Figure this out l8r.
     }
     let mut sq = match unsafe { BLK_DEV.get() } {
@@ -436,11 +444,20 @@ pub fn virtio_blk_intr() {
         io_barrier();
         let used_idx = sq.last_seen_used % (RING_SIZE as u16);
         let used_id = sq.used.ring[used_idx as usize].id as usize;
-
-        if sq.reqs[used_id].status != 0 {
+        let buf = sq.stat[used_id] as *mut BlockBuffer;
+        if unsafe {(*buf).status} != 0 {
             panic!("virtio blk req status");
         }
-
+        unsafe { (*buf).ready = 1; }
         sq.last_seen_used += 1;
+    }
+}
+
+pub fn test_blk_write() {
+    let data = alloc::vec![0,1,2,3,4];
+    let mut buf = BlockBuffer { status: 0, ready: 0, data, offset: 1 };
+    match write_blk_dev(&mut buf) {
+        Ok(_) => (),
+        Err(e) => {println!("{}", e);},
     }
 }
