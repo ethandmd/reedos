@@ -261,8 +261,7 @@ struct VirtBlkReq {
     rtype: u32, // VirtBlkReqType
     reserved: u32,
     sector: u64,
-    data: usize, // Let's pretend this is `u8 data[]` in C.
-    status: u8, // BLK_S_OK, ...
+    data: usize,
 }
 
 fn read_virtio_32(offset: usize) -> u32 {
@@ -398,8 +397,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
         rtype, 
         reserved: 0,
         sector: buf.offset, // TODO: fix this up later.
-        data: 0,
-        status: 0xff,
+        data: buf.data.addr(),
     };
     sq.track[head_idx] = (buf as *mut BlockBuffer).addr();
     // Alternatively we use one descriptor of blk_req header + data.
@@ -420,7 +418,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
     // Fill in status block.
     sq.desc[stat_idx] = VirtQueueDesc {
-        addr: (&mut sq.reqs[head_idx].status as *mut u8).addr(),//(&mut buf.status as *mut u8).addr(),
+        addr: (&mut buf.status as *mut u8).addr(),//(&mut buf.status as *mut u8).addr(),
         len: size_of::<u8>() as u32,
         flags: VirtQueueDescFeat::Write as u16,
         next: 0,
@@ -465,8 +463,7 @@ pub fn virtio_blk_intr() {
         let used_id = sq.used.ring[used_idx as usize].id as usize;
         //println!("used_idx: {}, used_id: {}", used_idx, used_id);
         let buf = sq.track[used_id as usize] as *mut BlockBuffer;
-        let req = sq.desc[used_id as usize].addr as *const VirtBlkReq;
-        let iostat = unsafe { (*req).status };
+        let iostat = unsafe { (*buf).status };
         if iostat != 0 {
             log!(Error, "Block IO status: {}", iostat);
             //panic!("virtio blk req status");
