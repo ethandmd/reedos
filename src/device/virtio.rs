@@ -150,6 +150,8 @@ impl SplitVirtQueue {
     }
 
     fn free_descs(&mut self, mut idx: usize) {
+        // Head of chain is blk req since right now we only do virtio_blk
+        self.reqs[idx] = VirtBlkReq::default();
         let next_flag = VirtQueueDescFeat::Next as u16;
         loop {
             if self.desc[idx].flags & next_flag != 0 {
@@ -358,7 +360,6 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
 // Section 2.6.13
 fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
-    println!("Buffer In: {:?}", buf);
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
         None => { return Err("Uninitialized blk device."); },
@@ -460,33 +461,32 @@ pub fn virtio_blk_intr() {
             log!(Debug, "Block IO status: {}", iostat);
         }
         let rdy = sq.track[used_id as usize] as *mut u8;
-        //println!("rdy: {}", unsafe { *rdy});
         unsafe { rdy.write(1) };
-        unsafe { rdy.read() };
-        //println!("rdy: {}", unsafe { *rdy});
         sq.last_seen_used += 1;
         sq.free_descs(used_id);
     }
 }
 
-pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) {
+pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> {
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(true, &mut buf) {
         Ok(_) => {
-            while buf.ready == 0 {}
+            //while buf.ready == 0 {}
             println!("Finished blk write.");
         },
         Err(e) => {println!("Test blk write error: {}", e);},
-    }
+    };
+    buf
 }
 
-pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) {
+pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer>{
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(false, &mut buf) {
         Ok(_) => {
-            while buf.ready == 0 {}
+            //while buf.ready == 0 {}
             println!("Finished blk read.");
         },
         Err(e) => {println!("Test blk write error: {}", e);},
-    }
+    };
+    buf
 }

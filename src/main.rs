@@ -170,16 +170,15 @@ fn main() -> ! {
             // release the waiting harts
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
-    //let mut data = alloc::string::String::from("hello block world.");
-    let mut wdata = alloc::vec![1_u8; 10];
+    let mut wdata = alloc::string::String::from("##########");
     let mut rdata = alloc::vec![0_u8; 10];
-    //log!(Debug, "Testing virtio blk write...");
-    //device::virtio::test_blk_read(data.as_mut_ptr(), data.len() as u32, 0);
-    //println!("{:?}", data);
-    log!(Debug, "Testing virtio blk write...");
-    device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 0);
-    log!(Debug, "Testing virtio blk read...");
-    device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
+    log!(Debug, "Testing virtio blk read [1/3]...");
+    let _b1 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
+    println!("{:?}", rdata);
+    log!(Debug, "Testing virtio blk write [2/3]...");
+    let _b2 = device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 0);
+    log!(Debug, "Testing virtio blk read [3/3]...");
+    let _b3 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
     println!("{:?}", rdata);
 
     } else {
