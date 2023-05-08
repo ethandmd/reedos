@@ -240,6 +240,7 @@ impl From<u64> for VirtQueueUsedElem {
 #[repr(C)]
 #[derive(Debug)]
 pub struct BlockBuffer {
+    status: u8,
     ready: u8,
     data: *mut u8,
     len: u32,
@@ -366,6 +367,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
 // Section 2.6.13
 fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
+    if buf.len % 512 != 0 { return Err("Data must be multiple of 512 bytes."); }
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
         None => { return Err("Uninitialized blk device."); },
@@ -396,10 +398,10 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
         data: 0,
         status: 0xff,
     };
-    sq.track[head_idx] = (&mut buf.ready as *mut u8).addr();
+    sq.track[head_idx] = (buf as *mut BlockBuffer).addr();
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
-    let head_ptr = &sq.reqs[head_idx] as *const VirtBlkReq;
+    let head_ptr = &mut sq.reqs[head_idx] as *mut VirtBlkReq;
     sq.desc[head_idx] = VirtQueueDesc { 
         addr: head_ptr.addr(),
         len: size_of::<VirtBlkReq>() as u32,
@@ -415,7 +417,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
     // Fill in status block.
     sq.desc[stat_idx] = VirtQueueDesc {
-        addr: (&mut sq.reqs[head_idx].status as *mut u8).addr(),
+        addr: (&mut sq.reqs[head_idx].status as *mut u8).addr(),//(&mut buf.status as *mut u8).addr(),
         len: size_of::<u8>() as u32,
         flags: VirtQueueDescFeat::Write as u16,
         next: 0,
@@ -459,22 +461,23 @@ pub fn virtio_blk_intr() {
         let used_idx = sq.last_seen_used % (RING_SIZE as u16);
         let used_id = sq.used.ring[used_idx as usize].id as usize;
         //println!("used_idx: {}, used_id: {}", used_idx, used_id);
-        let iostat = sq.reqs[used_id].status;
+        let buf = sq.track[used_id as usize] as *mut BlockBuffer;
+        let req = sq.desc[used_id as usize].addr as *const VirtBlkReq;
+        let iostat = unsafe { (*req).status };
         if iostat != 0 {
             log!(Error, "Block IO status: {}", iostat);
             //panic!("virtio blk req status");
         } else {
             log!(Debug, "Block IO status: {}", iostat);
         }
-        let rdy = sq.track[used_id as usize] as *mut u8;
-        unsafe { rdy.write(1) };
+        unsafe { (*buf).ready = 1 };
         sq.last_seen_used += 1;
         sq.free_descs(used_id);
     }
 }
 
 pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> {
-    let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
+    let mut buf = Box::new(BlockBuffer { status: 0xff, ready: 0, data, len, offset });
     match blk_dev_ops(true, &mut buf) {
         Ok(_) => {
             while buf.ready == 0 {}
@@ -486,7 +489,7 @@ pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> 
 }
 
 pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer>{
-    let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
+    let mut buf = Box::new(BlockBuffer { status: 0xff, ready: 0, data, len, offset });
     match blk_dev_ops(false, &mut buf) {
         Ok(_) => {
             while buf.ready == 0 {}
