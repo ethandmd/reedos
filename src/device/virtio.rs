@@ -1,5 +1,5 @@
 //! Access the virtio device through the mmio interface provided by QEMU.
-//! [Virtual I/O Device (VIRTIO) Specs](https://docs.oasis-open.org/virtio/virtio/v1.1/virtio-v1.1.html)
+//! [Virtual I/O Device (VIRTIO) Specs](https://docs.oasis-open.org/virtio/virtio/v1.2/virtio-v1.2.pdf)
 //! If we ever add an additional VIRTIO device, we will refactor this into a proper module for
 //! multiple device types.
 
@@ -301,13 +301,13 @@ pub fn virtio_init() -> Result<(), &'static str> {
     device_status |= VirtioDeviceStatus::Driver as u32;
     write_virtio_32(VIRTIO_STATUS, device_status);
 
-    // Step 4,5,6: Negotiate features. (Conflating steps btwn new & legacy spec)
+    // Step 4,5,6: Negotiate features. MUST write to FeatureSel regs first.
+    write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
     let mut device_feature = read_virtio_32(VIRTIO_DEVICE_FEATURES);
     for feat in DEVICE_FEATURE_CLEAR {
         device_feature &= !(1 << feat);
     }
-    //write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
-    //write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
+    write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
     write_virtio_32(VIRTIO_DRIVER_FEATURES, device_feature);
     // write feature_ok ? legacy device ver 0x1.
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
@@ -451,7 +451,7 @@ pub fn virtio_blk_intr() {
     
     // Borrowed from xv6, mimicking 2.6.14 in virtio 1.1
     let int_status = read_virtio_32(VIRTIO_INTERRUPT_STATUS);
-    write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status);
+    write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status & 0x1);
     //println!("Virtio BLK dev intr status: {:#02x}", int_status);
 
     while sq.last_seen_used != sq.used.idx {
