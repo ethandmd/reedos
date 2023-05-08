@@ -86,7 +86,7 @@ const VIRTIO_RING_F_INDIRECT_DESC: u32 = 29;
 static DEVICE_FEATURE_CLEAR: [u32; 7] = [
     VIRTIO_BLK_F_RO,
     VIRTIO_BLK_F_SCSI,
-    VIRTIO_BLK_F_WRITE_ZEROES,
+    VIRTIO_BLK_F_CONFIG_WCE,
     VIRTIO_BLK_F_MQ,
     VIRTIO_BLK_F_ANY_LAYOUT,
     VIRTIO_RING_F_EVENT_IDX,
@@ -107,9 +107,8 @@ const RING_SIZE: usize = 32; // Power of 2.
 struct SplitVirtQueue {
     // As suggested in 2.6.14
     last_seen_used: u16,
-    // Track requests.
-    stat: Box<[usize]>,
     // Free desc table tracker
+    track: Box<[usize]>,
     free: Box<[u8]>,
     // Owner of all block requests.
     reqs: Box<[VirtBlkReq]>,
@@ -126,14 +125,14 @@ struct SplitVirtQueue {
 impl SplitVirtQueue {
     // Ptr's must have been allocated with global alloc.
     fn new() -> Self {
-        let stat = Box::new([0; RING_SIZE]);
         //(0..RING_SIZE).map(|_| BlockBuffer::default()).collect::<Vec<BlockBuffer>>().into_boxed_slice();
+        let track= Box::new([0; RING_SIZE]);
         let free = Box::new([1; RING_SIZE]);
         let reqs = (0..RING_SIZE).map(|_| VirtBlkReq::default()).collect::<Vec<VirtBlkReq>>().into_boxed_slice();
         let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
         let avail = Box::new(VirtQueueAvail::new());
         let used = Box::new(VirtQueueUsed::new());
-        Self { stat, last_seen_used: 0, free, reqs, desc, avail, used }
+        Self { last_seen_used: 0, track, free, reqs, desc, avail, used }
     }
 
     fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
@@ -177,7 +176,7 @@ enum VirtQueueDescFeat {
 // Note that we don't need IOMMU since this is all in QEMU process.
 // If this were a real physical device, then we need IOMMU.
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct VirtQueueDesc {
     addr: usize, // Specifically little endian 64
     len: u32,
@@ -231,11 +230,11 @@ impl From<u64> for VirtQueueUsedElem {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Debug)]
 pub struct BlockBuffer {
-    status: u8,
     ready: u8,
-    data: Vec<u8>,
+    data: *mut u8,
+    len: u32,
     offset: u64,
 }
 
@@ -257,13 +256,13 @@ struct VirtBlkReq {
     status: u8, // BLK_S_OK, ...
 }
 
-fn read_virtio_reg_4(offset: usize) -> u32 {
+fn read_virtio_32(offset: usize) -> u32 {
     unsafe {
         ((VIRTIO_BASE + offset) as *mut u32).read_volatile()
     }
 }
 
-fn write_virtio_reg_4(offset: usize, data: u32) {
+fn write_virtio_32(offset: usize, data: u32) {
     let ptr = (VIRTIO_BASE + offset) as *mut u32;
     unsafe {
         ptr.write_volatile(data)
@@ -273,10 +272,10 @@ fn write_virtio_reg_4(offset: usize, data: u32) {
 // ONLY Block Device Initialization: Sections 3.1 (general) + 4.2.3 (mmio)
 pub fn virtio_init() -> Result<(), &'static str> {
     // Step 0: Read device info.
-    let magic = read_virtio_reg_4(VIRTIO_MAGIC);
-    let ver = read_virtio_reg_4(VIRTIO_VERSION);
-    let dev_id = read_virtio_reg_4(VIRTIO_DEVICE_ID);
-    let ven_id = read_virtio_reg_4(VIRTIO_VENDOR_ID);
+    let magic = read_virtio_32(VIRTIO_MAGIC);
+    let ver = read_virtio_32(VIRTIO_VERSION);
+    let dev_id = read_virtio_32(VIRTIO_DEVICE_ID);
+    let ven_id = read_virtio_32(VIRTIO_VENDOR_ID);
     if magic != 0x74726976 || ver != 0x2 || dev_id != 0x2 || ven_id != 0x554d4551 {
         return Err("Device info is incompatible.");
     }
@@ -284,41 +283,43 @@ pub fn virtio_init() -> Result<(), &'static str> {
     let mut device_status = 0x0;
 
     // Step 1: Reset device.
-    write_virtio_reg_4(VIRTIO_STATUS, device_status);
+    write_virtio_32(VIRTIO_STATUS, device_status);
 
     // Step 2: Ack device.
     device_status |= VirtioDeviceStatus::Ack as u32;
-    write_virtio_reg_4(VIRTIO_STATUS, device_status);
+    write_virtio_32(VIRTIO_STATUS, device_status);
 
     // Step 3: Driver status bit.
     device_status |= VirtioDeviceStatus::Driver as u32;
-    write_virtio_reg_4(VIRTIO_STATUS, device_status);
+    write_virtio_32(VIRTIO_STATUS, device_status);
 
     // Step 4,5,6: Negotiate features. (Conflating steps btwn new & legacy spec)
-    let mut device_feature = read_virtio_reg_4(VIRTIO_DEVICE_FEATURES);
+    let mut device_feature = read_virtio_32(VIRTIO_DEVICE_FEATURES);
     for feat in DEVICE_FEATURE_CLEAR {
         device_feature &= !(1 << feat);
     }
-    write_virtio_reg_4(VIRTIO_DEVICE_FEATURES, device_feature);
+    write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
+    write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
+    write_virtio_32(VIRTIO_DRIVER_FEATURES, device_feature);
     // write feature_ok ? legacy device ver 0x1.
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
-    write_virtio_reg_4(VIRTIO_STATUS, device_status);
-    let new_status = read_virtio_reg_4(VIRTIO_STATUS);
-    if (new_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0x0 {
+    write_virtio_32(VIRTIO_STATUS, device_status);
+    device_status = read_virtio_32(VIRTIO_STATUS);
+    if (device_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0x0 {
         println!("FeaturesOK (not supported || not accepted).");
     }
 
     // Step 7: Set up virt queues; Section 4.2.3.2
     // i. Select queue and write index to QUEUE_SEL.
-    write_virtio_reg_4(VIRTIO_QUEUE_SEL, 0);
+    write_virtio_32(VIRTIO_QUEUE_SEL, 0);
     
     // ii. Check if queue in use; read QueueReady, expect 0x0.
-    if read_virtio_reg_4(VIRTIO_QUEUE_READY) != 0x0 {
+    if read_virtio_32(VIRTIO_QUEUE_READY) != 0x0 {
         return Err("Selected Queue already in use.");
     }
 
     // iii. Check max queue size; read QueueNumMax, if 0x0, queue not avail.
-    let vq_max = read_virtio_reg_4(VIRTIO_QUEUE_NUM_MAX);
+    let vq_max = read_virtio_32(VIRTIO_QUEUE_NUM_MAX);
     log!(Debug, "Virtio BLK dev max queues: {}", vq_max);
     if vq_max == 0x0 || (vq_max as usize) < RING_SIZE {
         return Err("Queue is not available.");
@@ -333,31 +334,38 @@ pub fn virtio_init() -> Result<(), &'static str> {
     }
 
     // v. Notife the device about queue size; write to QueueNum.
-    write_virtio_reg_4(VIRTIO_QUEUE_NUM, RING_SIZE as u32);
+    write_virtio_32(VIRTIO_QUEUE_NUM, RING_SIZE as u32);
 
     // vi. Write queue addrs to desc{high/low}, ...
-    write_virtio_reg_4(VIRTIO_QUEUE_DESC_LOW, desc_ptr.addr() as u32);
-    write_virtio_reg_4(VIRTIO_QUEUE_DESC_HIGH, (desc_ptr.addr() >> 32) as u32);
-    write_virtio_reg_4(VIRTIO_QUEUE_DRIVER_LOW, avail_ptr as u32);
-    write_virtio_reg_4(VIRTIO_QUEUE_DRIVER_HIGH, avail_ptr.map_addr(|addr| addr >> 32) as u32);
-    write_virtio_reg_4(VIRTIO_QUEUE_DEVICE_LOW, used_ptr as u32);
-    write_virtio_reg_4(VIRTIO_QUEUE_DEVICE_HIGH, used_ptr.map_addr(|addr| addr >> 32) as u32);
+    write_virtio_32(VIRTIO_QUEUE_DESC_LOW, desc_ptr.addr() as u32);
+    write_virtio_32(VIRTIO_QUEUE_DESC_HIGH, (desc_ptr.addr() >> 32) as u32);
+    write_virtio_32(VIRTIO_QUEUE_DRIVER_LOW, avail_ptr as u32);
+    write_virtio_32(VIRTIO_QUEUE_DRIVER_HIGH, avail_ptr.map_addr(|addr| addr >> 32) as u32);
+    write_virtio_32(VIRTIO_QUEUE_DEVICE_LOW, used_ptr as u32);
+    write_virtio_32(VIRTIO_QUEUE_DEVICE_HIGH, used_ptr.map_addr(|addr| addr >> 32) as u32);
 
     // vii. Write 0x1 to QueueReady
-    write_virtio_reg_4(VIRTIO_QUEUE_READY, 0x1);
+    write_virtio_32(VIRTIO_QUEUE_READY, 0x1);
 
     // Step 8: Set DriverOk bit in Device status.
     device_status |= VirtioDeviceStatus::DriverOk as u32;
-    write_virtio_reg_4(VIRTIO_STATUS, device_status);
+    write_virtio_32(VIRTIO_STATUS, device_status);
+
+    log!(Debug, "Virtio BLK dev status: {:#02x}", read_virtio_32(VIRTIO_STATUS));
+
     Ok(())
 }
 
 // Section 2.6.13
-fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
+fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
+    println!("Buffer In: {:?}", buf);
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
         None => { return Err("Uninitialized blk device."); },
     };
+
+    let rtype = if write { VirtBlkReqType::Out as u32 } else { VirtBlkReqType::In as u32 };
+    let dflag = if write { VirtQueueDescFeat::Write as u16 } else { 0 };
 
     // Place buffers into desc table; Section 2.6.13.1
     // We need one desc for blk_req, one for buf data.
@@ -375,15 +383,13 @@ fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
     // Fill in Blk Req
     sq.reqs[head_idx] = VirtBlkReq {
-        rtype: VirtBlkReqType::Out as u32, 
+        rtype, 
         reserved: 0,
-        sector: buf.offset * 512,
+        sector: buf.offset, // TODO: fix this up later.
         data: 0,
-        status: 0,
+        status: 0xff,
     };
-    buf.ready = 0;
-    buf.status = 0xff;
-    sq.stat[head_idx] = (buf as *mut BlockBuffer).addr();
+    sq.track[head_idx] = (&mut buf.ready as *mut u8).addr();
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
     let head_ptr = &sq.reqs[head_idx] as *const VirtBlkReq;
@@ -395,14 +401,14 @@ fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
     // Fill in Desc for data.
     sq.desc[data_idx] = VirtQueueDesc {
-        addr: buf.data.as_ptr().addr(),
-        len: buf.data.len() as u32,
-        flags: VirtQueueDescFeat::Write as u16 | VirtQueueDescFeat::Next as u16,
+        addr: buf.data.addr(),
+        len: buf.len,
+        flags: dflag | VirtQueueDescFeat::Next as u16,
         next: stat_idx as u16,
     };
     // Fill in status block.
     sq.desc[stat_idx] = VirtQueueDesc {
-        addr: (&mut buf.status as *mut u8).addr(),
+        addr: (&mut sq.reqs[head_idx].status as *mut u8).addr(),
         len: size_of::<u8>() as u32,
         flags: VirtQueueDescFeat::Write as u16,
         next: 0,
@@ -423,18 +429,10 @@ fn write_blk_dev(buf: &mut BlockBuffer) -> Result<(), &'static str>{
 
     // Send available buffer notification to device; Section 2.6.13.4
     // Without negotating VIRTIO_F_NOTIFICATION_DATA write queue index here; Section 4.2.3.3
-    write_virtio_reg_4(VIRTIO_QUEUE_NOTIFY, 0);
+    write_virtio_32(VIRTIO_QUEUE_NOTIFY, 0);
 
     drop(sq);
-    // Wait for device to process request.
-    while buf.ready != 1 {
-        // Figure this out l8r.
-    }
-    let mut sq = match unsafe { BLK_DEV.get() } {
-        Some(sq) => sq.lock(),
-        None => { return Err("Failed to re-acquire sq lock."); },
-    };
-    sq.free_descs(head_idx);
+    while buf.ready == 0 {}
 
     Ok(())
 }
@@ -446,27 +444,40 @@ pub fn virtio_blk_intr() {
     };
     
     // Borrowed from xv6, mimicking 2.6.14 in virtio 1.1
-    let int_status = read_virtio_reg_4(VIRTIO_INTERRUPT_STATUS);
-    write_virtio_reg_4(VIRTIO_INTERRUPT_ACK, int_status & 0x3);
+    let int_status = read_virtio_32(VIRTIO_INTERRUPT_STATUS);
+    write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status);
+    println!("Virtio BLK dev intr status: {:#02x}", int_status);
 
     while sq.last_seen_used != sq.used.idx {
         io_barrier();
         let used_idx = sq.last_seen_used % (RING_SIZE as u16);
         let used_id = sq.used.ring[used_idx as usize].id as usize;
-        let buf = sq.stat[used_id] as *mut BlockBuffer;
-        if unsafe {(*buf).status} != 0 {
-            panic!("virtio blk req status");
+        println!("used_idx: {}, used_id: {}", used_idx, used_id);
+        let iostat = sq.reqs[used_id].status;
+        if iostat != 0 {
+            log!(Error, "Block IO status: {}", iostat);
+            //panic!("virtio blk req status");
+        } else {
+            log!(Debug, "Block IO status: {}", iostat);
         }
-        unsafe { (*buf).ready = 1; }
+        unsafe { (sq.track[used_id as usize] as *mut u8).write(1) };
         sq.last_seen_used += 1;
+        sq.free_descs(used_id);
     }
 }
 
-pub fn test_blk_write() {
-    let data = alloc::vec![0,1,2,3,4];
-    let mut buf = BlockBuffer { status: 0, ready: 0, data, offset: 1 };
-    match write_blk_dev(&mut buf) {
-        Ok(_) => (),
+pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) {
+    let mut buf = BlockBuffer { ready: 0, data, len, offset };
+    match blk_dev_ops(true, &mut buf) {
+        Ok(_) => {println!("Finished blk write.");},
+        Err(e) => {println!("Test blk write error: {}", e);},
+    }
+}
+
+pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) {
+    let mut buf = BlockBuffer { ready: 0, data, len, offset };
+    match blk_dev_ops(false, &mut buf) {
+        Ok(_) => {println!("Finished blk read.");},
         Err(e) => {println!("Test blk write error: {}", e);},
     }
 }

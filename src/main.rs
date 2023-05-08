@@ -170,6 +170,18 @@ fn main() -> ! {
             // release the waiting harts
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
+    //let mut data = alloc::string::String::from("hello block world.");
+    let mut wdata = alloc::vec![1_u8; 512];
+    let mut rdata = alloc::vec![0_u8; 512];
+    //log!(Debug, "Testing virtio blk write...");
+    //device::virtio::test_blk_read(data.as_mut_ptr(), data.len() as u32, 0);
+    //println!("{:?}", data);
+    log!(Debug, "Testing virtio blk write...");
+    device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 0);
+    log!(Debug, "Testing virtio blk read...");
+    device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
+    println!("{:?}", rdata);
+
     } else {
         // Do the init that can be independent and without global deps.
         trap::init();
@@ -185,8 +197,8 @@ fn main() -> ! {
 
     }
     
-    log!(Debug, "Testing virtio blk write...");
-    device::virtio::test_blk_write();
+    //log!(Debug, "Testing virtio blk write...");
+    //device::virtio::test_blk_write();
 
     // we want to test multiple processes with multiple harts
     process::test_multiprocess_syscall();
