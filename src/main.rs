@@ -170,16 +170,15 @@ fn main() -> ! {
             // release the waiting harts
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
-    let mut wdata = alloc::string::String::from("##########");
-    let mut rdata = alloc::vec![3_u8; 10];
+    let mut wdata = [1_u8; 512];
+    let mut rdata = [3_u8; 512];
     log!(Debug, "Testing virtio blk read [1/3]...");
-    let _b1 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
-    println!("{:?}", rdata);
+    let _b1 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 1);
     log!(Debug, "Testing virtio blk write [2/3]...");
-    let _b2 = device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 0);
+    let _b2 = device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 1);
     log!(Debug, "Testing virtio blk read [3/3]...");
-    let _b3 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
-    println!("{:?}", rdata);
+    let _b3 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 1);
+    println!("{:?}", &rdata[0..8]);
 
     } else {
         // Do the init that can be independent and without global deps.
