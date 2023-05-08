@@ -155,7 +155,7 @@ fn main() -> ! {
         log!(Debug, "Successful phys page extent allocation and freeing...");
         
         log!(Debug, "Initializing VIRTIO blk device...");
-        if let Err(e) = device::virtio::virtio_init() {
+        if let Err(e) = device::virtio::virtio_blk_init() {
             println!("{:?}", e);
         }
 
@@ -165,6 +165,16 @@ fn main() -> ! {
         plic::local_init();
         log!(Info, "Finished plic local init hart0...");
         log!(Info, "Completed all hart0 initialization and testing...");
+    
+        log!(Debug, "Testing virtio blk write...");
+        let mut buf1 = alloc::string::String::from("hello block world.");
+        let mut buf2 = alloc::string::String::from("------------------"); // yup.
+        let mut buf3 = alloc::string::String::from("hello again block world.");
+        let mut buf4 = alloc::string::String::from("------------------------");
+        device::virtio::test_blk_write(buf1.as_mut_ptr(), buf1.len() as u32, 1);
+        device::virtio::test_blk_read(buf2.as_mut_ptr(), buf2.len() as u32, 1);
+        device::virtio::test_blk_write(buf3.as_mut_ptr(), buf3.len() as u32, 8);
+        device::virtio::test_blk_read(buf4.as_mut_ptr(), buf4.len() as u32, 8);
 
         unsafe {
             // release the waiting harts
@@ -184,13 +194,9 @@ fn main() -> ! {
         log!(Info, "Completed all hart{} local initialization", read_tp());
 
     }
-    
-    log!(Debug, "Testing virtio blk write...");
-    device::virtio::test_blk_write();
-
     // we want to test multiple processes with multiple harts
-    process::test_multiprocess_syscall();
-    //loop {}
+    //process::test_multiprocess_syscall();
+    loop {}
 
-    panic!("Reached the end of kernel main! Did the root process not start?");
+    //panic!("Reached the end of kernel main! Did the root process not start?");
 }
