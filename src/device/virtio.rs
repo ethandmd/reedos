@@ -430,9 +430,8 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     // Send available buffer notification to device; Section 2.6.13.4
     // Without negotating VIRTIO_F_NOTIFICATION_DATA write queue index here; Section 4.2.3.3
     write_virtio_32(VIRTIO_QUEUE_NOTIFY, 0);
-
     drop(sq);
-    while buf.ready == 0 {}
+    //while buf.ready == 0 {}
 
     Ok(())
 }
@@ -446,13 +445,13 @@ pub fn virtio_blk_intr() {
     // Borrowed from xv6, mimicking 2.6.14 in virtio 1.1
     let int_status = read_virtio_32(VIRTIO_INTERRUPT_STATUS);
     write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status);
-    println!("Virtio BLK dev intr status: {:#02x}", int_status);
+    //println!("Virtio BLK dev intr status: {:#02x}", int_status);
 
     while sq.last_seen_used != sq.used.idx {
         io_barrier();
         let used_idx = sq.last_seen_used % (RING_SIZE as u16);
         let used_id = sq.used.ring[used_idx as usize].id as usize;
-        println!("used_idx: {}, used_id: {}", used_idx, used_id);
+        //println!("used_idx: {}, used_id: {}", used_idx, used_id);
         let iostat = sq.reqs[used_id].status;
         if iostat != 0 {
             log!(Error, "Block IO status: {}", iostat);
@@ -460,24 +459,34 @@ pub fn virtio_blk_intr() {
         } else {
             log!(Debug, "Block IO status: {}", iostat);
         }
-        unsafe { (sq.track[used_id as usize] as *mut u8).write(1) };
+        let rdy = sq.track[used_id as usize] as *mut u8;
+        //println!("rdy: {}", unsafe { *rdy});
+        unsafe { rdy.write(1) };
+        unsafe { rdy.read() };
+        //println!("rdy: {}", unsafe { *rdy});
         sq.last_seen_used += 1;
         sq.free_descs(used_id);
     }
 }
 
 pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) {
-    let mut buf = BlockBuffer { ready: 0, data, len, offset };
+    let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(true, &mut buf) {
-        Ok(_) => {println!("Finished blk write.");},
+        Ok(_) => {
+            while buf.ready == 0 {}
+            println!("Finished blk write.");
+        },
         Err(e) => {println!("Test blk write error: {}", e);},
     }
 }
 
 pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) {
-    let mut buf = BlockBuffer { ready: 0, data, len, offset };
+    let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(false, &mut buf) {
-        Ok(_) => {println!("Finished blk read.");},
+        Ok(_) => {
+            while buf.ready == 0 {}
+            println!("Finished blk read.");
+        },
         Err(e) => {println!("Test blk write error: {}", e);},
     }
 }
