@@ -97,6 +97,12 @@ static DEVICE_FEATURE_CLEAR: [u32; 7] = [
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
+const VIRTIO_BLK_T_GET_ID: u8 = 8;
+const VIRTIO_BLK_T_GET_LIFETIME: u8 = 10;
+const VIRTIO_BLK_T_DISCARD: u8 = 11;
+const VIRTIO_BLK_T_WRITE_ZEROES: u8 = 13;
+const VIRTIO_BLK_T_SECURE_ERASE: u8 = 14;
+
 
 const RING_SIZE: usize = 32; // Power of 2.
 
@@ -300,15 +306,15 @@ pub fn virtio_init() -> Result<(), &'static str> {
     for feat in DEVICE_FEATURE_CLEAR {
         device_feature &= !(1 << feat);
     }
-    write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
-    write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
+    //write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
+    //write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
     write_virtio_32(VIRTIO_DRIVER_FEATURES, device_feature);
     // write feature_ok ? legacy device ver 0x1.
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
     write_virtio_32(VIRTIO_STATUS, device_status);
     device_status = read_virtio_32(VIRTIO_STATUS);
     if (device_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0x0 {
-        println!("FeaturesOK (not supported || not accepted).");
+        return Err("FeaturesOK (not supported || not accepted).");
     }
 
     // Step 7: Set up virt queues; Section 4.2.3.2
