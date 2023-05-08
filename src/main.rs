@@ -171,7 +171,7 @@ fn main() -> ! {
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
     let mut wdata = alloc::string::String::from("##########");
-    let mut rdata = alloc::vec![0_u8; 10];
+    let mut rdata = alloc::vec![3_u8; 10];
     log!(Debug, "Testing virtio blk read [1/3]...");
     let _b1 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
     println!("{:?}", rdata);

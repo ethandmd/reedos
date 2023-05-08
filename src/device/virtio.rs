@@ -471,7 +471,7 @@ pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> 
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(true, &mut buf) {
         Ok(_) => {
-            //while buf.ready == 0 {}
+            while buf.ready == 0 {}
             println!("Finished blk write.");
         },
         Err(e) => {println!("Test blk write error: {}", e);},
@@ -483,7 +483,7 @@ pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer>{
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
     match blk_dev_ops(false, &mut buf) {
         Ok(_) => {
-            //while buf.ready == 0 {}
+            while buf.ready == 0 {}
             println!("Finished blk read.");
         },
         Err(e) => {println!("Test blk write error: {}", e);},
