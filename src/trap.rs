@@ -112,6 +112,9 @@ fn s_extern() {
         },
         VIRTIO_IRQ => {
             virtio::virtio_blk_intr();
+            unsafe {
+                plic::PLIC.get().unwrap().complete(irq)
+            };
         },
         _ => {
             panic!("Uncaught PLIC exception.")
