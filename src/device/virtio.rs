@@ -305,6 +305,9 @@ pub fn virtio_init() -> Result<(), &'static str> {
     // Step 4,5,6: Negotiate features. MUST write to FeatureSel regs first.
     write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
     let mut device_feature = read_virtio_32(VIRTIO_DEVICE_FEATURES);
+    //if device_feature & VIRTIO_BLK_F_RO != 0 {
+    //    return Err("Read only block device.");
+    //}
     for feat in DEVICE_FEATURE_CLEAR {
         device_feature &= !(1 << feat);
     }
