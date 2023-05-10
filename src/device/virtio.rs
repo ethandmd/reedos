@@ -408,7 +408,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     sq.desc[head_idx].next = data_idx as u16;
     
     // Fill in Desc for data.
-    sq.desc[data_idx].addr = buf.data.addr();
+    sq.desc[data_idx].addr = buf.data as usize;
     sq.desc[data_idx].len = 512;
     sq.desc[data_idx].flags = dflag;
     sq.desc[data_idx].flags |= VirtQueueDescFeat::Next as u16;
