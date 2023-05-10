@@ -79,19 +79,8 @@ const VIRTIO_BLK_F_MQ: u32 = 12;
 const VIRTIO_BLK_F_DISCARD: u32 = 13;
 const VIRTIO_BLK_F_WRITE_ZEROES: u32 = 14;
 const VIRTIO_BLK_F_ANY_LAYOUT: u32 = 27;
-const VIRTIO_RING_F_EVENT_IDX: u32 = 28;
-const VIRTIO_RING_F_INDIRECT_DESC: u32 = 29;
-
-// Clear these bits during feat negotiation.
-static DEVICE_FEATURE_CLEAR: [u32; 7] = [
-    VIRTIO_BLK_F_RO,
-    VIRTIO_BLK_F_SCSI,
-    VIRTIO_BLK_F_CONFIG_WCE,
-    VIRTIO_BLK_F_MQ,
-    VIRTIO_BLK_F_ANY_LAYOUT,
-    VIRTIO_RING_F_EVENT_IDX,
-    VIRTIO_RING_F_INDIRECT_DESC,
-];
+const VIRTIO_RING_F_INDIRECT_DESC: u32 = 28;
+const VIRTIO_RING_F_EVENT_IDX: u32 = 29;
 
 // Block request status
 const VIRTIO_BLK_S_OK: u8 = 0;
@@ -261,7 +250,6 @@ struct VirtBlkReq {
     rtype: u32, // VirtBlkReqType
     reserved: u32,
     sector: u64,
-    data: usize,
 }
 
 fn read_virtio_32(offset: usize) -> u32 {
@@ -303,20 +291,25 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
     // Step 4,5,6: Negotiate features. MUST write to FeatureSel regs first.
     write_virtio_32(VIRTIO_DEVICE_FEATURES_SEL, 0);
-    let mut device_feature = read_virtio_32(VIRTIO_DEVICE_FEATURES);
+    let mut features = read_virtio_32(VIRTIO_DEVICE_FEATURES);
     //if device_feature & VIRTIO_BLK_F_RO != 0 {
     //    return Err("Read only block device.");
     //}
-    for feat in DEVICE_FEATURE_CLEAR {
-        device_feature &= !(1 << feat);
-    }
+    features &= !(1 << VIRTIO_BLK_F_RO);
+    features &= !(1 << VIRTIO_BLK_F_SCSI);
+    features &= !(1 << VIRTIO_BLK_F_CONFIG_WCE);
+    features &= !(1 << VIRTIO_BLK_F_MQ);
+    features &= !(1 << VIRTIO_BLK_F_ANY_LAYOUT);
+    features &= !(1 << VIRTIO_RING_F_EVENT_IDX);
+    features &= !(1 << VIRTIO_RING_F_INDIRECT_DESC);
+
     write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
-    write_virtio_32(VIRTIO_DRIVER_FEATURES, device_feature);
+    write_virtio_32(VIRTIO_DRIVER_FEATURES, features);
     // write feature_ok ? legacy device ver 0x1.
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
     write_virtio_32(VIRTIO_STATUS, device_status);
     device_status = read_virtio_32(VIRTIO_STATUS);
-    if (device_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0x0 {
+    if (device_status & (VirtioDeviceStatus::FeaturesOk as u32)) == 0{
         return Err("FeaturesOK (not supported || not accepted).");
     }
 
@@ -362,8 +355,6 @@ pub fn virtio_init() -> Result<(), &'static str> {
     device_status |= VirtioDeviceStatus::DriverOk as u32;
     write_virtio_32(VIRTIO_STATUS, device_status);
 
-    log!(Debug, "Virtio BLK dev status: {:#02x}", read_virtio_32(VIRTIO_STATUS));
-
     Ok(())
 }
 
@@ -397,7 +388,6 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
         rtype, 
         reserved: 0,
         sector: buf.offset, // TODO: fix this up later.
-        data: buf.data.addr(),
     };
     sq.track[head_idx] = (buf as *mut BlockBuffer).addr();
     // Alternatively we use one descriptor of blk_req header + data.
