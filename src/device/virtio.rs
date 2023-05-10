@@ -107,7 +107,7 @@ const VIRTIO_BLK_T_SECURE_ERASE: u8 = 14;
 const RING_SIZE: usize = 32; // Power of 2.
 
 // VirtQueues; Section 2.5.
-// 
+//
 // Based on (legacy supported) splitqueue: Section 2.6.
 // Device versions <= 0x1 only have split queue.
 struct SplitVirtQueue {
@@ -311,7 +311,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
     for feat in DEVICE_FEATURE_CLEAR {
         device_feature &= !(1 << feat);
     }
-    write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0);
+    // write_virtio_32(VIRTIO_DRIVER_FEATURES_SEL, 0); //comment to match xv6
     write_virtio_32(VIRTIO_DRIVER_FEATURES, device_feature);
     // write feature_ok ? legacy device ver 0x1.
     device_status |= VirtioDeviceStatus::FeaturesOk as u32;
@@ -324,7 +324,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
     // Step 7: Set up virt queues; Section 4.2.3.2
     // i. Select queue and write index to QUEUE_SEL.
     write_virtio_32(VIRTIO_QUEUE_SEL, 0);
-    
+
     // ii. Check if queue in use; read QueueReady, expect 0x0.
     if read_virtio_32(VIRTIO_QUEUE_READY) != 0x0 {
         return Err("Selected Queue already in use.");
@@ -395,7 +395,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
     // Fill in Blk Req
     sq.reqs[head_idx] = VirtBlkReq {
-        rtype, 
+        rtype,
         reserved: 0,
         sector: buf.offset, // TODO: fix this up later.
         data: 0,
@@ -405,7 +405,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
     let head_ptr = &mut sq.reqs[head_idx] as *mut VirtBlkReq;
-    sq.desc[head_idx] = VirtQueueDesc { 
+    sq.desc[head_idx] = VirtQueueDesc {
         addr: head_ptr.addr(),
         len: size_of::<VirtBlkReq>() as u32,
         flags: VirtQueueDescFeat::Next as u16,
@@ -453,10 +453,11 @@ pub fn virtio_blk_intr() {
         Some(sq) => sq.lock(),
         None => { return; },
     };
-    
+
     // Borrowed from xv6, mimicking 2.6.14 in virtio 1.1
     let int_status = read_virtio_32(VIRTIO_INTERRUPT_STATUS);
-    write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status & 0x1);
+    // write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status & 0x1);
+    write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status & 0x3); // match xv6
     //println!("Virtio BLK dev intr status: {:#02x}", int_status);
 
     while sq.last_seen_used != sq.used.idx {
