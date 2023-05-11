@@ -373,7 +373,7 @@ fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     };
 
     let rtype = if write { VirtBlkReqType::Out as u32 } else { VirtBlkReqType::In as u32 };
-    let dflag = if write { VirtQueueDescFeat::Write as u16 } else { 0 };
+    let dflag = if write { 0 } else { VirtQueueDescFeat::Write as u16 };
 
     // Place buffers into desc table; Section 2.6.13.1
     // We need one desc for blk_req, one for buf data.
