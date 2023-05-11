@@ -9,8 +9,8 @@ set -euo pipefail
 
 ##just creates a 'raw' ext2 fs on fs.img. No partitioning or anything, like so:
 ##fs.img: Linux rev 1.0 ext2 filesystem data, UUID=0a160ba6-2a1f-4013-8d54-5876e1c8697d (large files)
-##do:
-##qemu-img create fs.img -f raw 16M
+##do: 
+##dd if=/dev/zero of=fs.img bs=1k count=1048576 # creates 1G file, 1k bs
 ##then
 ##mkfs.ext2 fs.img
 

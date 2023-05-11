@@ -5,6 +5,7 @@
 
 // Also a nice walkthrough: https://www.redhat.com/en/blog/virtio-devices-and-drivers-overview-headjack-and-phone
 
+use crate::fs::EXT2_BLOCK_SIZE;
 use crate::hw::riscv::io_barrier;
 use crate::lock::mutex::Mutex;
 use crate::alloc::{vec::Vec, boxed::Box};
@@ -412,7 +413,7 @@ fn blk_dev_ops(write: bool, status: *mut u8, buf: &mut Block) -> Result<(), &'st
     let mut req = &mut sq.reqs[head_idx];
     req.rtype = rtype;
     req.reserved = 0;
-    req.sector = buf.offset;
+    req.sector = buf.offset * (EXT2_BLOCK_SIZE / 512);
 
     // Track buffer for interrupt handling.
     unsafe { *status = 0xff; } // Just double checking.
