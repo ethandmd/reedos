@@ -1,4 +1,16 @@
-use crate::alloc::string::String;
+use crate::alloc::{string::String, vec::Vec, boxed::Box};
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct Ext2 {
+    pub superblock: Superblock,
+    pub block_groups: Box<[BlockGroupDescriptor]>,
+    pub blocks: Vec<Box<[u8]>>,
+    pub block_size: usize,
+    pub uuid: [u8; 16], // Uuid <- replacement hack of a real uuid.
+    pub block_offset: usize, // <- our "device data" actually starts at this index'th block of the device
+                             // so we have to subtract this number before indexing blocks[]
+}
 
 /// EXT2 Superblock. Graciously borrowed from @dylanmc.
 #[repr(C)]
