@@ -5,7 +5,6 @@
 
 // Also a nice walkthrough: https://www.redhat.com/en/blog/virtio-devices-and-drivers-overview-headjack-and-phone
 
-use crate::fs::EXT2_BLOCK_SIZE;
 use crate::hw::riscv::io_barrier;
 use crate::lock::mutex::Mutex;
 use crate::alloc::{vec::Vec, boxed::Box};
@@ -226,7 +225,7 @@ const VIRTIO_BLK_F_ANY_LAYOUT: u32 = 27;
 const VIRTIO_RING_F_INDIRECT_DESC: u32 = 28;
 const VIRTIO_RING_F_EVENT_IDX: u32 = 29;
 
-// Block request status
+// DevBlock request status
 const VIRTIO_BLK_S_OK: u8 = 0;
 const VIRTIO_BLK_S_IOERR: u8 = 1;
 const VIRTIO_BLK_S_UNSUPP: u8 = 2;
@@ -236,7 +235,7 @@ const VIRTIO_BLK_T_DISCARD: u8 = 11;
 const VIRTIO_BLK_T_WRITE_ZEROES: u8 = 13;
 const VIRTIO_BLK_T_SECURE_ERASE: u8 = 14;
 
-// Block request types
+// DevBlock request types
 enum VirtBlkReqType {
     In = 0,
     Out =  1,
@@ -255,20 +254,20 @@ struct VirtBlkReq {
 /// Represents one block of data on disk. Data must point to 512 bytes of owned memory.
 #[repr(C)]
 #[derive(Debug)]
-pub struct Block {
+pub struct DevBlock {
     data: *mut u8,
     len: u32, // Fixed at 512 bytes.
     offset: u64,
 }
 
-impl Block {
+impl DevBlock {
     pub fn new(data: *mut u8, offset: u64) -> Self {
         Self { data, len: 512, offset }
     }
 }
 
-impl Block {
-    /// Blocking write to device. Spins on `status` until device sets it.
+impl DevBlock {
+    /// DevBlocking write to device. Spins on `status` until device sets it.
     pub fn write(&mut self) {
         let mut status = 0xff_u8;
         match blk_dev_ops(true, &mut status as *mut u8, self) {
@@ -279,7 +278,7 @@ impl Block {
             Err(_) => {log!(Error, "Failed to write block. Err code: {}", status); },
         };
     }
-    /// Blocking read from device. Spins on `status` until device sets it.
+    /// DevBlocking read from device. Spins on `status` until device sets it.
     pub fn read(&mut self) {
         let mut status = 0xff_u8;
         match blk_dev_ops(false, &mut status as *mut u8, self) {
@@ -291,7 +290,7 @@ impl Block {
     }
 }
 
-// ONLY Block Device Initialization: Sections 3.1 (general) + 4.2.3 (mmio)
+// ONLY DevBlock Device Initialization: Sections 3.1 (general) + 4.2.3 (mmio)
 pub fn virtio_block_init() -> Result<(), &'static str> {
     // Step 0: Read device info.
     let magic = read_virtio_32(VIRTIO_MAGIC);
@@ -385,7 +384,7 @@ pub fn virtio_block_init() -> Result<(), &'static str> {
 }
 
 // Section 2.6.13
-fn blk_dev_ops(write: bool, status: *mut u8, buf: &mut Block) -> Result<(), &'static str>{
+fn blk_dev_ops(write: bool, status: *mut u8, buf: &mut DevBlock) -> Result<(), &'static str>{
     if buf.len % 512 != 0 { return Err("Data must be multiple of 512 bytes."); }
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
@@ -413,7 +412,7 @@ fn blk_dev_ops(write: bool, status: *mut u8, buf: &mut Block) -> Result<(), &'st
     let mut req = &mut sq.reqs[head_idx];
     req.rtype = rtype;
     req.reserved = 0;
-    req.sector = buf.offset * (EXT2_BLOCK_SIZE / 512);
+    req.sector = buf.offset / 512;
 
     // Track buffer for interrupt handling.
     unsafe { *status = 0xff; } // Just double checking.
@@ -481,7 +480,7 @@ pub fn virtio_blk_intr() {
         //println!("used_idx: {}, used_id: {}", used_idx, used_id);
         let iostat = unsafe { *(sq.track[used_id as usize] as *mut u8) };
         if iostat != 0 {
-            log!(Error, "Block IO status: {}", iostat);
+            log!(Error, "DevBlock IO status: {}", iostat);
             //panic!("virtio blk req status");
         }
         sq.last_seen_used += 1;
