@@ -111,7 +111,7 @@ fn s_extern() {
 
         },
         VIRTIO_IRQ => {
-            unsafe { virtio::virtio_blk_intr(); }
+            virtio::virtio_blk_intr();
             unsafe {
                 plic::PLIC.get().unwrap().complete(irq)
             };

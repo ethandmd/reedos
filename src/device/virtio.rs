@@ -7,8 +7,6 @@
 
 use crate::hw::riscv::io_barrier;
 use crate::lock::mutex::Mutex;
-use crate::vm::request_phys_page;
-use crate::hw::param::PAGE_SIZE;
 use crate::alloc::{vec::Vec, boxed::Box};
 use core::cell::OnceCell;
 use core::mem::size_of;
@@ -32,12 +30,9 @@ const VIRTIO_DEVICE_FEATURES: usize = 0x010; // Flags := supported feature map. 
 const VIRTIO_DEVICE_FEATURES_SEL: usize = 0x014; // Read above flags then write this reg with desired feats.
 const VIRTIO_DRIVER_FEATURES: usize = 0x020;
 const VIRTIO_DRIVER_FEATURES_SEL: usize = 0x024; // See device_*.
-const VIRTIO_GUEST_PAGE_SIZE: usize = 0x028;
 const VIRTIO_QUEUE_SEL: usize = 0x030; // Zero indexed queue selection for below regs:
 const VIRTIO_QUEUE_NUM_MAX: usize = 0x034; // What it says on the tin.
 const VIRTIO_QUEUE_NUM: usize = 0x038;
-const VIRTIO_QUEUE_ALIGN: usize = 0x03c;
-const VIRTIO_QUEUE_PFN: usize = 0x040;
 const VIRTIO_QUEUE_READY: usize = 0x044; // Write 0x1 to tell device it can execute requests in the sel queue.
 const VIRTIO_QUEUE_NOTIFY: usize = 0x050; // Tell dev there are new buffers in queue to process.
 const VIRTIO_INTERRUPT_STATUS: usize = 0x060; // Read to get bit mask of causal events.
@@ -113,13 +108,13 @@ struct SplitVirtQueue {
     // Owner of all block requests.
     reqs: Box<[VirtBlkReq]>,
     // Descriptor Area: describe buffers (make fixed array?)
-    desc: *mut [VirtQueueDesc; RING_SIZE], //Box<[VirtQueueDesc]>,
+    desc: Box<[VirtQueueDesc]>,
     // Driver Area (aka Available ring): extra info from driver to device
-    avail: *mut VirtQueueAvail, //Box<VirtQueueAvail>,
+    avail: Box<VirtQueueAvail>,
     // Device Area (aka Used ring): extra info from device to driver
     // * NEED PADDING HERE? *
     // pad: Vec<u8>,
-    used: *mut VirtQueueUsed, //Box<VirtQueueUsed>,
+    used: Box<VirtQueueUsed>,
 }
 
 impl SplitVirtQueue {
@@ -129,18 +124,14 @@ impl SplitVirtQueue {
         let track= Box::new([Stat::default(); RING_SIZE]);
         let free = Box::new([1; RING_SIZE]);
         let reqs = (0..RING_SIZE).map(|_| VirtBlkReq::default()).collect::<Vec<VirtBlkReq>>().into_boxed_slice();
-        //let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
-        //let avail = Box::new(VirtQueueAvail::new());
-        //let used = Box::new(VirtQueueUsed::new());
-        let qs = request_phys_page(3).unwrap().start();
-        let desc = qs as *mut [VirtQueueDesc; RING_SIZE];
-        let avail = qs.map_addr(|p| p + 0x1000) as *mut VirtQueueAvail;
-        let used = qs.map_addr(|p| p + 0x2000) as *mut VirtQueueUsed;
+        let desc = (0..RING_SIZE).map(|_| VirtQueueDesc::default()).collect::<Vec<VirtQueueDesc>>().into_boxed_slice();
+        let avail = Box::new(VirtQueueAvail::new());
+        let used = Box::new(VirtQueueUsed::new());
         Self { last_seen_used: 0, track, free, reqs, desc, avail, used }
     }
 
     fn get_ring_ptrs(&self) -> (*const VirtQueueDesc, *const VirtQueueAvail, *const VirtQueueUsed) {
-        (self.desc.addr() as *const VirtQueueDesc, self.avail, self.used)
+        (self.desc.as_ptr(), &*self.avail, &*self.used)
     }
 
     fn alloc_desc(&mut self) -> Option<usize> {
@@ -153,15 +144,15 @@ impl SplitVirtQueue {
         None
     }
 
-    unsafe fn free_descs(&mut self, mut idx: usize) {
+    fn free_descs(&mut self, mut idx: usize) {
         // Head of chain is blk req since right now we only do virtio_blk
         self.reqs[idx] = VirtBlkReq::default();
         let next_flag = VirtQueueDescFeat::Next as u16;
         loop {
-            if (*self.desc)[idx].flags & next_flag != 0 {
+            if self.desc[idx].flags & next_flag != 0 {
                 self.free[idx] = 1;
                 let next = (*self.desc)[idx].next as usize;
-                (*self.desc)[idx] = VirtQueueDesc::default();
+                self.desc[idx] = VirtQueueDesc::default();
                 idx = next;
             } else {
                 break;
@@ -362,8 +353,6 @@ pub fn virtio_init() -> Result<(), &'static str> {
     write_virtio_32(VIRTIO_QUEUE_DRIVER_HIGH, avail_ptr.map_addr(|addr| addr >> 32) as u32);
     write_virtio_32(VIRTIO_QUEUE_DEVICE_LOW, used_ptr as u32);
     write_virtio_32(VIRTIO_QUEUE_DEVICE_HIGH, used_ptr.map_addr(|addr| addr >> 32) as u32);
-    //write_virtio_32(VIRTIO_QUEUE_ALIGN, PAGE_SIZE as u32);
-    //write_virtio_32(VIRTIO_QUEUE_PFN, desc_ptr.addr() as u32); 
 
     // vii. Write 0x1 to QueueReady
     write_virtio_32(VIRTIO_QUEUE_READY, 0x1);
@@ -376,7 +365,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
 }
 
 // Section 2.6.13
-unsafe fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
+fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static str>{
     if buf.len % 512 != 0 { return Err("Data must be multiple of 512 bytes."); }
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
@@ -413,34 +402,34 @@ unsafe fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static
     // Alternatively we use one descriptor of blk_req header + data.
     // Fill in Desc for Blk Req
     let head_ptr = &mut sq.reqs[head_idx] as *mut VirtBlkReq;
-    (*sq.desc)[head_idx].addr = head_ptr.addr();
+    sq.desc[head_idx].addr = head_ptr.addr();
     (*sq.desc)[head_idx].len = size_of::<VirtBlkReq>() as u32;
     (*sq.desc)[head_idx].flags = VirtQueueDescFeat::Next as u16;
     (*sq.desc)[head_idx].next = data_idx as u16;
 
     // Fill in Desc for data.
-    (*sq.desc)[data_idx].addr = buf.data as usize;
-    (*sq.desc)[data_idx].len = 512;
-    (*sq.desc)[data_idx].flags = dflag;
-    (*sq.desc)[data_idx].flags |= VirtQueueDescFeat::Next as u16;
-    (*sq.desc)[data_idx].next = stat_idx as u16;
-
+    sq.desc[data_idx].addr = buf.data.addr();
+    sq.desc[data_idx].len = 512;
+    sq.desc[data_idx].flags = dflag;
+    sq.desc[data_idx].flags |= VirtQueueDescFeat::Next as u16;
+    sq.desc[data_idx].next = stat_idx as u16;
+    
     // Fill in status block.
-    (*sq.desc)[stat_idx].addr = (&mut sq.track[head_idx].status as *mut u8).addr();
-    (*sq.desc)[stat_idx].len = size_of::<u8>() as u32;
-    (*sq.desc)[stat_idx].flags = VirtQueueDescFeat::Write as u16;
-    (*sq.desc)[stat_idx].next = 0;
+    sq.desc[stat_idx].addr = (&mut sq.track[head_idx].status as *mut u8).addr();
+    sq.desc[stat_idx].len = size_of::<u8>() as u32;
+    sq.desc[stat_idx].flags = VirtQueueDescFeat::Write as u16;
+    sq.desc[stat_idx].next = 0;
 
     // Place index of desc chain head in avail ring. Section 2.6.13.2
-    let avail_idx = ((*sq.avail).idx % RING_SIZE as u16) as usize; // I know. Rust and its types.
-    (*sq.avail).ring[avail_idx] = head_idx as u16;
+    let avail_idx = (sq.avail.idx % RING_SIZE as u16) as usize; // I know. Rust and its types.
+    sq.avail.ring[avail_idx] = head_idx as u16;
 
     // Memory barrier to ensure device sees updated desc table.
     // Could probably use core::sync::atomic::fence(Ordering::Seqcst) but idk about rust sometimes.
     io_barrier();
 
     // Incr avail ring index. Section 2.6.13.3
-    (*sq.avail).idx += 1; // Or += num desc heads if we are batching.
+    sq.avail.idx += 1; // Or += num desc heads if we are batching.
 
     io_barrier();
 
@@ -453,7 +442,7 @@ unsafe fn blk_dev_ops(write: bool, buf: &mut BlockBuffer) -> Result<(), &'static
     Ok(())
 }
 
-pub unsafe fn virtio_blk_intr() {
+pub fn virtio_blk_intr() {
     let mut sq = match unsafe { BLK_DEV.get() } {
         Some(sq) => sq.lock(),
         None => { return; },
@@ -465,10 +454,10 @@ pub unsafe fn virtio_blk_intr() {
     write_virtio_32(VIRTIO_INTERRUPT_ACK, int_status & 0x3); // match xv6
     //println!("Virtio BLK dev intr status: {:#02x}", int_status);
 
-    while sq.last_seen_used != (*sq.used).idx {
+    while sq.last_seen_used != sq.used.idx {
         io_barrier();
         let used_idx = sq.last_seen_used % (RING_SIZE as u16);
-        let used_id = (*sq.used).ring[used_idx as usize].id as usize;
+        let used_id = sq.used.ring[used_idx as usize].id as usize;
         //println!("used_idx: {}, used_id: {}", used_idx, used_id);
         let buf = sq.track[used_id as usize].buf_ptr as *mut BlockBuffer;
         let iostat = sq.track[used_id as usize].status;
@@ -486,7 +475,7 @@ pub unsafe fn virtio_blk_intr() {
 
 pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> {
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
-    match unsafe { blk_dev_ops(true, &mut buf) } {
+    match blk_dev_ops(true, &mut buf) {
         Ok(_) => {
             while buf.ready == 0 {}
             println!("Finished blk write.");
@@ -498,7 +487,7 @@ pub fn test_blk_write(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer> 
 
 pub fn test_blk_read(data: *mut u8, len: u32, offset: u64) -> Box<BlockBuffer>{
     let mut buf = Box::new(BlockBuffer { ready: 0, data, len, offset });
-    match unsafe { blk_dev_ops(false, &mut buf) } {
+    match blk_dev_ops(false, &mut buf) {
         Ok(_) => {
             while buf.ready == 0 {}
             println!("Finished blk read.");
