@@ -346,7 +346,7 @@ pub fn virtio_init() -> Result<(), &'static str> {
 
     // iv. Allocate and zero queue. Must by physically contiguous.
     let sq = SplitVirtQueue::new();
-    let (desc_ptr, _avail_ptr, _used_ptr) = sq.get_ring_ptrs();
+    let (desc_ptr, avail_ptr, used_ptr) = sq.get_ring_ptrs();
     match unsafe { BLK_DEV.set(Mutex::new(sq)) } {
         Ok(_) => (),
         Err(_) => { return Err("Unable to init memory for ring queues."); },
@@ -356,14 +356,14 @@ pub fn virtio_init() -> Result<(), &'static str> {
     write_virtio_32(VIRTIO_QUEUE_NUM, RING_SIZE as u32);
 
     // vi. Write queue addrs to desc{high/low}, ...
-    //write_virtio_32(VIRTIO_QUEUE_DESC_LOW, desc_ptr.addr() as u32);
-    //write_virtio_32(VIRTIO_QUEUE_DESC_HIGH, (desc_ptr.addr() >> 32) as u32);
-    //write_virtio_32(VIRTIO_QUEUE_DRIVER_LOW, avail_ptr as u32);
-    //write_virtio_32(VIRTIO_QUEUE_DRIVER_HIGH, avail_ptr.map_addr(|addr| addr >> 32) as u32);
-    //write_virtio_32(VIRTIO_QUEUE_DEVICE_LOW, used_ptr as u32);
-    //write_virtio_32(VIRTIO_QUEUE_DEVICE_HIGH, used_ptr.map_addr(|addr| addr >> 32) as u32);
-    write_virtio_32(VIRTIO_QUEUE_ALIGN, PAGE_SIZE as u32);
-    write_virtio_32(VIRTIO_QUEUE_PFN, desc_ptr.addr() as u32); 
+    write_virtio_32(VIRTIO_QUEUE_DESC_LOW, desc_ptr.addr() as u32);
+    write_virtio_32(VIRTIO_QUEUE_DESC_HIGH, (desc_ptr.addr() >> 32) as u32);
+    write_virtio_32(VIRTIO_QUEUE_DRIVER_LOW, avail_ptr as u32);
+    write_virtio_32(VIRTIO_QUEUE_DRIVER_HIGH, avail_ptr.map_addr(|addr| addr >> 32) as u32);
+    write_virtio_32(VIRTIO_QUEUE_DEVICE_LOW, used_ptr as u32);
+    write_virtio_32(VIRTIO_QUEUE_DEVICE_HIGH, used_ptr.map_addr(|addr| addr >> 32) as u32);
+    //write_virtio_32(VIRTIO_QUEUE_ALIGN, PAGE_SIZE as u32);
+    //write_virtio_32(VIRTIO_QUEUE_PFN, desc_ptr.addr() as u32); 
 
     // vii. Write 0x1 to QueueReady
     write_virtio_32(VIRTIO_QUEUE_READY, 0x1);
