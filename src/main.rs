@@ -155,7 +155,7 @@ fn main() -> ! {
         log!(Debug, "Successful phys page extent allocation and freeing...");
         
         log!(Debug, "Initializing VIRTIO blk device...");
-        if let Err(e) = device::virtio::virtio_init() {
+        if let Err(e) = device::virtio::virtio_block_init() {
             println!("{:?}", e);
         }
 
@@ -170,16 +170,6 @@ fn main() -> ! {
             // release the waiting harts
             GLOBAL_INIT_FLAG.assume_init_mut().update(1);
         }
-    let mut wdata = [1_u8; 512];
-    let mut rdata = [3_u8; 512];
-    log!(Debug, "Testing virtio blk read [1/3]...");
-    let _b1 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
-    log!(Debug, "Testing virtio blk write [2/3]...");
-    let _b2 = device::virtio::test_blk_write(wdata.as_mut_ptr(), wdata.len() as u32, 0);
-    log!(Debug, "Testing virtio blk read [3/3]...");
-    let _b3 = device::virtio::test_blk_read(rdata.as_mut_ptr(), rdata.len() as u32, 0);
-    println!("{:?}", &rdata[0..8]);
-
     } else {
         // Do the init that can be independent and without global deps.
         trap::init();
@@ -195,9 +185,6 @@ fn main() -> ! {
 
     }
     
-    //log!(Debug, "Testing virtio blk write...");
-    //device::virtio::test_blk_write();
-
     // we want to test multiple processes with multiple harts
     process::test_multiprocess_syscall();
     //loop {}
