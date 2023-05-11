@@ -4,11 +4,13 @@
 *.o
 *.elf
 .rust*
+*.img
 
 # IDE/direnv stuff
 .vscode/
 .idea/
 .direnv/
+*.swp
 
 # Presentation stuff
 /docs/presentation/*
