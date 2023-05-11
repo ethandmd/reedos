@@ -25,6 +25,7 @@ pub mod trap;
 pub mod vm;
 pub mod process;
 pub mod file;
+pub mod fs;
 
 
 use crate::hw::hartlocal;
