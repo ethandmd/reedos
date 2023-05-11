@@ -1,26 +1,24 @@
 //! Kernel trap handlers.
 use crate::device::clint;
 use crate::hw::riscv;
-use crate::vm::ptable::PageTable;
 
 use crate::log;
-
-// TODO currently we are using machine mode direct for everything. So
-// everything goes though mhandler. The situation has become more
-// complicated, see the issue on github about it.
 
 extern "C" {
     pub fn __mtrapvec();
     pub fn __strapvec();
 }
 
-pub struct TrapFrame {
-    kpgtbl: *mut PageTable,
-    handler: *const (),
-    cause: usize,
-    retpc: usize, // Return from trap program counter value.
-    regs: [usize; 32],
-}
+
+// TODO currently not in use
+//
+// pub struct TrapFrame {
+//     kpgtbl: *mut PageTable,
+//     handler: *const (),
+//     cause: usize,
+//     retpc: usize, // Return from trap program counter value.
+//     regs: [usize; 32],
+// }
 
 /// Write the supervisor trap vector to stvec register on each hart.
 pub fn init() {
@@ -62,3 +60,4 @@ pub extern "C" fn s_handler() {
         panic!()
     }
 }
+

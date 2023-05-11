@@ -9,6 +9,7 @@ pub const MSTATUS_MPP_U: u64 = 0 << 11; // User
 pub const MSTATUS_MIE: u64 = 1 << 3; // machine-mode interrupt enable.
 pub const MSTATUS_TIMER: u64 = (1 << 63) | (7); // mcause for machine mode timer.
                                                 // sstatus := Supervisor status reg.
+pub const SSTATUS_SUM: u64 = 1 << 18; // Previous mode, 1=Supervisor, 0=User
 pub const SSTATUS_SPP: u64 = 1 << 8; // Previous mode, 1=Supervisor, 0=User
 pub const SSTATUS_SPIE: u64 = 1 << 5; // Supervisor Previous Interrupt Enable
 pub const SSTATUS_UPIE: u64 = 1 << 4; // User Previous Interrupt Enable
@@ -238,6 +239,23 @@ pub fn read_tp() -> u64 {
     tp
 }
 
+/// Read and write the hart local global pointer register. In kernel
+/// space we will be using it to point to hart local kernel
+/// information including the current process to be / has been run
+pub fn write_gp(id: u64) {
+    unsafe {
+        asm!("mv gp, {}", in(reg) id);
+    }
+}
+
+pub fn read_gp() -> u64 {
+    let gp: u64;
+    unsafe {
+        asm!("mv {}, gp", out(reg) gp);
+    }
+    gp
+}
+
 // Make sure mret has an addr to go to!
 pub fn call_mret() {
     unsafe {
@@ -255,7 +273,7 @@ pub fn write_mtvec(addr: usize) {
     unsafe {
         asm!(r#"
         .option norvc
-        csrw mtvec, {} 
+        csrw mtvec, {}
         "#, in(reg) addr);
     }
 }

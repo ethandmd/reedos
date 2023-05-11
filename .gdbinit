@@ -6,6 +6,8 @@ info threads
 set schedule-multiple on
 set output-radix 16
 set print pretty on
+set disassemble-next-line auto
+# tui enable
 define hook-quit
     set confirm off
 end
