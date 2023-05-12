@@ -1,4 +1,8 @@
-use crate::alloc::string::String;
+use crate::alloc::{string::String, boxed::Box};
+use crate::vm::request_phys_page;
+use crate::hw::param::PAGE_SIZE;
+use crate::device::virtio::*;
+use core::mem::size_of;
 
 //#[repr(C)]
 //#[derive(Debug)]
@@ -11,6 +15,20 @@ use crate::alloc::string::String;
 //    pub block_offset: usize, // <- our "device data" actually starts at this index'th block of the device
 //                             // so we have to subtract this number before indexing blocks[]
 //}
+
+pub trait BlockSlice<T: Copy> {
+    // Example usage:
+    // let sb: Box<Superblock> = Superblock::read(1024);
+    fn read(offset: u64) -> Box<T> {
+        let len = ((size_of::<T>() + 512) & !511) as u32; //Need to be multiple of 512 for blk dev.
+        let pgs = ((size_of::<T>() + PAGE_SIZE) & !(PAGE_SIZE - 1)) / PAGE_SIZE;
+        let buf: *mut u8 = request_phys_page(pgs).unwrap().start().addr() as *mut u8;
+        let _ = Block::new(buf, len, offset).unwrap().read();
+        let raw = buf as *mut T;
+        Box::new(unsafe { *raw })
+        // drop(pgs)
+    }
+}
 
 /// EXT2 Superblock. Graciously borrowed from @dylanmc.
 #[repr(C)]
@@ -119,8 +137,10 @@ pub struct Superblock {
     pub journal_orphan_head: u32,
 }
 
+impl<T: Copy> BlockSlice<T> for Superblock {}
+
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct BlockGroupDescriptor {
     /// Block address of block usage bitmap
     pub block_usage_addr: u32,
