@@ -7,12 +7,13 @@
 
 set -euo pipefail
 
-##just creates a 'raw' ext2 fs on fs.img. No partitioning or anything, like so:
-##fs.img: Linux rev 1.0 ext2 filesystem data, UUID=0a160ba6-2a1f-4013-8d54-5876e1c8697d (large files)
-##do: 
-##dd if=/dev/zero of=fs.img bs=1k count=1048576 # creates 1G file, 1k bs
-##then
-##mkfs.ext2 fs.img
+## Creates a 'raw' ext2 fs on fs.img file.
+##
+## dd if=/dev/zero of=fs.img bs=512 count=20480
+##
+## Specify 4k block size, check fs.img for bad blocks, force direct IO, and optionally
+## copy /usr/bin (e.g. builtin programs) to the filesystem.
+## mkfs.ext2 fs.img -b 4096 -c fs.img -D # -d /usr/bin
 
 # ** Don't forget to `$qemu-img create fs.img 64k` (or whatever size you want).
 FLAGS=(-machine virt -smp 2 -m 128M -bios none -nographic \
