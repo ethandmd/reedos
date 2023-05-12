@@ -9,11 +9,11 @@ set -euo pipefail
 
 ## Creates a 'raw' ext2 fs on fs.img file.
 ##
-## dd if=/dev/zero of=fs.img bs=512 count=20480
+## dd if=/dev/zero of=fs.img bs=512 count=2097152 # 1G file!
 ##
-## Specify 4k block size, check fs.img for bad blocks, force direct IO, and optionally
+## Specify 4k block size, check fs.img for bad block, and optionally
 ## copy /usr/bin (e.g. builtin programs) to the filesystem.
-## mkfs.ext2 fs.img -b 4096 -c fs.img -D # -d /usr/bin
+## mkfs.ext2 -b 4096 -c fs.img # -d /usr/bin
 
 # ** Don't forget to `$qemu-img create fs.img 64k` (or whatever size you want).
 FLAGS=(-machine virt -smp 2 -m 128M -bios none -nographic \
