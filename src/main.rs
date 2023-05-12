@@ -160,8 +160,8 @@ fn main() -> ! {
             println!("{:?}", e);
         }
         log!(Debug, "Initializing EXT2 fs...");
-        if let Ok(sb) = fs::init_ext2() {
-            println!("{:?}", sb);
+        if let Ok(_sb) = fs::init_ext2() {
+            //println!("{:?}", sb);
         }
 
         process::init_process_structure();
