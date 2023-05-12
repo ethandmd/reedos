@@ -1,6 +1,4 @@
-use crate::alloc::{string::String, boxed::Box};
-use crate::vm::request_phys_page;
-use crate::hw::param::PAGE_SIZE;
+use crate::alloc::{string::String, boxed::Box, vec::Vec};
 use crate::device::virtio::*;
 use core::mem::size_of;
 
@@ -19,14 +17,16 @@ use core::mem::size_of;
 pub trait BlockSlice<T: Copy> {
     // Example usage:
     // let sb: Box<Superblock> = Superblock::read(1024);
+    // Possibly not the most efficient but ...
     fn read(offset: u64) -> Box<T> {
-        let len = ((size_of::<T>() + 512) & !511) as u32; //Need to be multiple of 512 for blk dev.
-        let pgs = ((size_of::<T>() + PAGE_SIZE) & !(PAGE_SIZE - 1)) / PAGE_SIZE;
-        let buf: *mut u8 = request_phys_page(pgs).unwrap().start().addr() as *mut u8;
-        let _ = Block::new(buf, len, offset).unwrap().read();
-        let raw = buf as *mut T;
-        Box::new(unsafe { *raw })
-        // drop(pgs)
+        let len = (size_of::<T>() + 512) & !511; //Need to be multiple of 512 for blk dev.
+        //let pgs = ((size_of::<T>() + PAGE_SIZE) & !(PAGE_SIZE - 1)) / PAGE_SIZE;
+        //let buf: *mut u8 = request_phys_page(pgs).unwrap().start().addr() as *mut u8;
+        let mut buf: Vec<u8> = Vec::with_capacity(len);
+        let _ = Block::new(buf.as_mut_ptr(), len as u32, offset).unwrap().read();
+        let raw = buf.as_mut_ptr() as *mut T;
+        let sb = unsafe { *raw };
+        Box::new(sb)
     }
 }
 
