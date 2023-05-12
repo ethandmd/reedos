@@ -13,10 +13,8 @@ const EXT2_END_OF_SUPERBLOCK: usize = 2048;
 
 pub fn init_ext2() -> Result<Superblock, ()> {
     let mut sup_slice = Box::new([0_u8; 1024]);
-    let mut b1 = DevBlock::new(sup_slice.as_mut_ptr(), 1024);
+    let mut b1 = Block::new(sup_slice.as_mut_ptr(), 1024, 1024)?;
     b1.read();
-    let mut b2 = DevBlock::new(unsafe { sup_slice.as_mut_ptr().add(512) }, 1024 + 512);
-    b2.read();
     let sb: *const Superblock = sup_slice.as_ptr().cast::<Superblock>();
     Ok( unsafe { *sb } )
 }
