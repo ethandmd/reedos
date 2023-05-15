@@ -1,6 +1,7 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
+#![feature(int_roundings)]
 #![feature(pointer_byte_offsets)]
 #![feature(error_in_core)]
 #![feature(sync_unsafe_cell)]
@@ -160,8 +161,10 @@ fn main() -> ! {
             println!("{:?}", e);
         }
         log!(Debug, "Initializing EXT2 fs...");
-        if let Ok(_sb) = fs::init_ext2() {
-            //println!("{:?}", sb);
+        if let Err(e) = fs::init_ext2() {
+            log!(Error, "Initializing EXT2 fs: {:?}", e);
+        } else {
+            fs::play_ext2();
         }
 
         process::init_process_structure();
