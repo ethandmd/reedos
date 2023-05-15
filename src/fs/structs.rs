@@ -1,6 +1,9 @@
-use crate::alloc::{string::String, boxed::Box, vec::Vec};
+use crate::alloc::{boxed::Box, vec::Vec, vec, string::String};
 use crate::device::virtio::*;
 use core::mem::size_of;
+
+const EXT2_START_SUPERBLOCK: u64 = 1024;
+const EXT2_END_SUPERBLOCK: u64 = 2048;
 
 //#[repr(C)]
 //#[derive(Debug)]
@@ -14,19 +17,36 @@ use core::mem::size_of;
 //                             // so we have to subtract this number before indexing blocks[]
 //}
 
-pub trait BlockSlice<T: Copy> {
-    // Example usage:
-    // let sb: Box<Superblock> = Superblock::read(1024);
-    // Possibly not the most efficient but ...
-    fn read(offset: u64) -> Box<T> {
-        let len = (size_of::<T>() + 512) & !511; //Need to be multiple of 512 for blk dev.
-        //let pgs = ((size_of::<T>() + PAGE_SIZE) & !(PAGE_SIZE - 1)) / PAGE_SIZE;
-        //let buf: *mut u8 = request_phys_page(pgs).unwrap().start().addr() as *mut u8;
-        let mut buf: Vec<u8> = Vec::with_capacity(len);
-        let _ = Block::new(buf.as_mut_ptr(), len as u32, offset).unwrap().read();
-        let raw = buf.as_mut_ptr() as *mut T;
-        let sb = unsafe { *raw };
-        Box::new(sb)
+pub struct Hint { 
+    block_size: u32,
+    inode_size: u16,
+    blocks_per_group: u32,
+    inodes_per_group: u32,
+    block_desc_table: Vec<BlockGroupDescriptor>,
+}
+
+impl Hint {
+    pub fn from_super(sb: &Superblock) -> Self {
+        let bsize = 1024 << sb.log_block_size;
+        let bgd_start = if bsize == 1024 { 2048_u64 } else { bsize as u64 };
+        Hint { 
+            block_size: bsize,
+            inode_size: sb.inode_size,
+            blocks_per_group: sb.blocks_per_group,
+            inodes_per_group: sb.inodes_per_group,
+            block_desc_table: Self::read_bgdt(bgd_start, sb.blocks_count.div_ceil(sb.blocks_per_group) as usize),
+        }
+    }
+
+    // Read block group desc table and just hang on to it in memory.
+    fn read_bgdt(offset: u64, num: usize) -> Vec<BlockGroupDescriptor> {
+        let cap = ((size_of::<BlockGroupDescriptor>() * num) + 512) & !511; //Need to be multiple of 512 for blk dev.
+        let buf: Vec<u8> = vec![0; cap]; //Vec::with_capacity(cap);
+        let mut buf = core::mem::ManuallyDrop::new(buf);
+        let _ = Block::new(buf.as_mut_ptr(), cap as u32, offset).unwrap().read();
+        let mut buf = core::mem::ManuallyDrop::new(buf);
+        let raw = buf.as_mut_ptr() as *mut BlockGroupDescriptor;
+        unsafe { Vec::from_raw_parts(raw, num, cap) }
     }
 }
 
@@ -137,7 +157,19 @@ pub struct Superblock {
     pub journal_orphan_head: u32,
 }
 
-impl<T: Copy> BlockSlice<T> for Superblock {}
+impl Superblock {
+    // Example usage:
+    // let sb: Box<Superblock> = Superblock::read(1024);
+    pub fn read() -> Box<Self> {
+        let len = (size_of::<Self>() + 512) & !511; //Need to be multiple of 512 for blk dev.
+        let mut buf: Vec<u8> = Vec::with_capacity(len);
+        //let mut buf = core::mem::ManuallyDrop::new(buf);
+        let _ = Block::new(buf.as_mut_ptr(), len as u32, EXT2_START_SUPERBLOCK).unwrap().read();
+        let raw = buf.as_mut_ptr() as *mut Self;
+        let sb = unsafe { *raw };
+        Box::new(sb)
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -159,6 +191,7 @@ pub struct BlockGroupDescriptor {
 }
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct Inode {
     /// Type and Permissions (see below)
     pub type_perm: u16, // TypePerm. TODO: Should integrate bitflags! into my life at some point.
@@ -214,8 +247,76 @@ pub struct Inode {
     _padding: [u8; 128], // TODO: handle inode sizes != 128 according to superblock
 }
 
-#[repr(C)]
+impl Inode {
+    pub fn read(hint: &Hint, inum: u32) -> Box<Inode> {
+        // Find which block group to search.
+        let block_group = ((inum - 1) / hint.inodes_per_group) as usize;
+        // Get bg inode table starting block addr
+        let itable = hint.block_desc_table[block_group].inode_table_block;
+        // Find index into block group inode table.
+        let index = (inum -1) % hint.inodes_per_group;
+        // Find which block contains inode.
+        let block = (index * hint.inode_size as u32) / hint.block_size;
+        // Find byte address
+        let offset = ((itable + block) as u64 * hint.block_size as u64) as u64;
+       
+        let mut buf: Vec<u8> = vec![0_u8; hint.block_size as usize];//Vec::with_capacity(hint.block_size as usize);
+        //let mut buf = core::mem::ManuallyDrop::new(buf);
+        let _ = Block::new(buf.as_mut_ptr(), 4096, offset).unwrap().read();
+        let index_off = (index * hint.inode_size as u32) as usize;
+        assert_eq!(index_off % hint.inode_size as usize, 0); 
+        let raw = unsafe { buf.as_ptr().byte_add(index_off) as *mut Self };
+        let inode = unsafe { *raw };
+        Box::new(inode)
+    }
+
+    pub fn parse_dir(&self, hint: &Hint) -> Result<Vec<DirectoryPair>, ()> {
+        let bsize = hint.block_size as usize;
+        let tp = self.type_perm;
+        let mut buf: Vec<u8> = vec![0; bsize];
+        //let mut buf = core::mem::ManuallyDrop::new(buf);
+        let _ = Block::new(buf.as_mut_ptr(), bsize as u32, (self.direct_pointer[0] * hint.block_size) as u64).unwrap().read();
+        if tp & (TypePerm::Directory as u16) == TypePerm::Directory as u16 {
+            // Now iterate directory linked list.
+            // TODO: Use hashed directories.
+            let ptr = buf.as_mut_ptr();
+            let mut ret = Vec::new();
+            let mut idx = 0;
+            while idx < bsize {
+                let de = unsafe { ptr.byte_add(idx) as *mut DirectoryEntry };
+                let inode = unsafe { (*de).inode };
+                let nsize = unsafe { (*de).name_length };
+                let dname = unsafe { &mut (*de).name as *const u8};
+                let dsize = unsafe { (*de).entry_size };
+                let nvec = unsafe { core::slice::from_raw_parts(dname, nsize as usize) };
+                let dname = String::from_utf8(nvec.to_vec()).unwrap(); //Self::build_name(nvec);
+                ret.push(DirectoryPair::new(inode, dname));
+                idx += dsize as usize;
+            }
+            Ok(ret)
+            //Ok ( unsafe { Vec::from_raw_parts( buf.as_mut_ptr() as *mut DirectoryEntry, bsize, bsize ) } )
+        } else {
+            log!(Error, "Inode parsing type not implemented.");
+            Err(())
+        }
+    }
+}
+
 #[derive(Debug)]
+pub struct DirectoryPair {
+    pub inode: u32,
+    pub name: String,
+}
+
+impl DirectoryPair {
+    pub fn new(inode: u32, name: String) -> Self {
+        Self { inode, name }
+    }
+}
+
+// Linked List directory entry.
+#[repr(C)]
+#[derive(Debug)] //, Copy, Clone)]
 pub struct DirectoryEntry {
     /// Inode
     pub inode: u32,
@@ -225,23 +326,31 @@ pub struct DirectoryEntry {
     /// Name Length least-significant 8 bits
     pub name_length: u8,
     /// Type indicator (only if the feature bit for "directory entries have file type byte" is set, else this is the most-significant 8 bits of the Name Length)
-    pub type_indicator: TypeIndicator,
+    pub type_indicator: u8,
 
-    pub name: String, // Read in byte slice and do str::from_utf8() 
+    pub name: u8, // Read in byte slice and do str::from_utf8() 
 }
 
+#[repr(C)]
 #[derive(Debug)]
 pub enum TypeIndicator {
-    Unknown,
-    Regular,
-    Directory,
-    Character,
-    Block,
-    Fifo,
-    Socket,
-    Symlink,
+    Unknown = 0,
+    Regular = 1,
+    Directory = 2,
+    Character = 3,
+    Block = 4,
+    Fifo = 5,
+    Socket = 6,
+    Symlink = 7,
 }
 
+impl Default for TypeIndicator {
+    fn default() -> TypeIndicator {
+        TypeIndicator::Unknown
+    }
+}
+
+#[repr(u16)]
 pub enum TypePerm {
     /// FIFO
     Fifo = 0x1000,
