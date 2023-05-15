@@ -1,5 +1,6 @@
 use crate::alloc::{boxed::Box, vec::Vec, vec, string::String};
 use crate::device::virtio::*;
+use crate::vm::request_phys_page;
 use core::mem::size_of;
 
 const EXT2_START_SUPERBLOCK: u64 = 1024;
@@ -17,7 +18,7 @@ const EXT2_END_SUPERBLOCK: u64 = 2048;
 //                             // so we have to subtract this number before indexing blocks[]
 //}
 
-pub struct Hint { 
+pub struct Hint {
     block_size: u32,
     inode_size: u16,
     blocks_per_group: u32,
@@ -29,7 +30,7 @@ impl Hint {
     pub fn from_super(sb: &Superblock) -> Self {
         let bsize = 1024 << sb.log_block_size;
         let bgd_start = if bsize == 1024 { 2048_u64 } else { bsize as u64 };
-        Hint { 
+        Hint {
             block_size: bsize,
             inode_size: sb.inode_size,
             blocks_per_group: sb.blocks_per_group,
@@ -259,13 +260,14 @@ impl Inode {
         let block = (index * hint.inode_size as u32) / hint.block_size;
         // Find byte address
         let offset = ((itable + block) as u64 * hint.block_size as u64) as u64;
-       
-        let mut buf: Vec<u8> = vec![0_u8; hint.block_size as usize];//Vec::with_capacity(hint.block_size as usize);
+
+        // let mut buf: Vec<u8> = vec![0_u8; hint.block_size as usize];//Vec::with_capacity(hint.block_size as usize);
         //let mut buf = core::mem::ManuallyDrop::new(buf);
-        let _ = Block::new(buf.as_mut_ptr(), 4096, offset).unwrap().read();
-        let index_off = (index * hint.inode_size as u32) as usize;
-        assert_eq!(index_off % hint.inode_size as usize, 0); 
-        let raw = unsafe { buf.as_ptr().byte_add(index_off) as *mut Self };
+        let buf = request_phys_page(1).unwrap();
+        let _ = Block::new(buf.start() as *mut u8, 4096, offset).unwrap().read();
+        // let index_off = (index * hint.inode_size as u32) as usize;
+        // assert_eq!(index_off % hint.inode_size as usize, 0);
+        let raw = unsafe { (buf.start() as *mut Self).add(index as usize) };
         let inode = unsafe { *raw };
         Box::new(inode)
     }
@@ -328,7 +330,7 @@ pub struct DirectoryEntry {
     /// Type indicator (only if the feature bit for "directory entries have file type byte" is set, else this is the most-significant 8 bits of the Name Length)
     pub type_indicator: u8,
 
-    pub name: u8, // Read in byte slice and do str::from_utf8() 
+    pub name: u8, // Read in byte slice and do str::from_utf8()
 }
 
 #[repr(C)]

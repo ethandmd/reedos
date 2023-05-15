@@ -15,18 +15,18 @@ const EXT2_START_SUPERBLOCK: u64 = 1024;
 
 // How To Read An Inode
 
-// Read the Superblock to find the size of each block, the number of blocks per group, number Inodes per group, 
+// Read the Superblock to find the size of each block, the number of blocks per group, number Inodes per group,
 // and the starting block of the first group (Block Group Descriptor Table).
 // Determine which block group the inode belongs to.
 // Read the Block Group Descriptor corresponding to the Block Group which contains the inode to be looked up.
 // From the Block Group Descriptor, extract the location of the block group's inode table.
 // Determine the index of the inode in the inode table.
-// Index the inode table (taking into account non-standard inode size). 
+// Index the inode table (taking into account non-standard inode size).
 
 // Directory entry information and file contents are located within the data blocks that the Inode points to.
 // How To Read the Root Directory
 
-// The root directory's inode is defined to always be 2. Read/parse the contents of inode 2. 
+// The root directory's inode is defined to always be 2. Read/parse the contents of inode 2.
 
 #[derive(Debug)]
 pub enum FsError {
@@ -42,7 +42,7 @@ pub fn init_ext2() -> Result<(), FsError> {
     if sb.magic != EXT2_MAGIC {
         Err(FsError::BadMagic)
     } else if (1024 << sb.log_block_size) % 1024 != 0 {
-        Err(FsError::BadBlockSize) 
+        Err(FsError::BadBlockSize)
     } else if sb.blocks_count / sb.blocks_per_group < 1 {
         Err(FsError::NoBlocksPerGroup)
     } else {

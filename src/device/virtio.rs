@@ -262,7 +262,7 @@ pub struct Block {
 
 impl Block {
     pub fn new(data: *mut u8, len: u32, offset: u64) -> Result<Self, ()> {
-        if len % 512 == 0 { 
+        if len % 512 == 0 {
             Ok(Self { data, len, offset })
         } else {
             Err(())
@@ -432,11 +432,11 @@ fn blk_dev_ops(write: bool, status: *mut u8, buf: &mut Block) -> Result<(), &'st
 
     // Fill in Desc for data.
     sq.desc[data_idx].addr = buf.data.addr();
-    sq.desc[data_idx].len = 512;
+    sq.desc[data_idx].len = buf.len;
     sq.desc[data_idx].flags = dflag;
     sq.desc[data_idx].flags |= VirtQueueDescFeat::Next as u16;
     sq.desc[data_idx].next = stat_idx as u16;
-    
+
     // Fill in status block.
     sq.desc[stat_idx].addr = status.addr();
     sq.desc[stat_idx].len = size_of::<u8>() as u32;
