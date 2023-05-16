@@ -5,60 +5,99 @@
 pub mod structs;
 
 use structs::*;
-use crate::alloc::boxed::Box;
-use core::cell::OnceCell;
+use crate::alloc::{boxed::Box, vec::Vec, vec, string::{String, ToString}};
+use crate::device::virtio::Block;
+use core::cell::LazyCell;
+use core::mem::size_of;
 
-pub static mut EXT2_HINT: OnceCell<Hint> = OnceCell::new();
-
-const EXT2_MAGIC: u16 = 0xef53;
-const EXT2_START_SUPERBLOCK: u64 = 1024;
-
-// How To Read An Inode
-
-// Read the Superblock to find the size of each block, the number of blocks per group, number Inodes per group,
-// and the starting block of the first group (Block Group Descriptor Table).
-// Determine which block group the inode belongs to.
-// Read the Block Group Descriptor corresponding to the Block Group which contains the inode to be looked up.
-// From the Block Group Descriptor, extract the location of the block group's inode table.
-// Determine the index of the inode in the inode table.
-// Index the inode table (taking into account non-standard inode size).
-
-// Directory entry information and file contents are located within the data blocks that the Inode points to.
-// How To Read the Root Directory
-
-// The root directory's inode is defined to always be 2. Read/parse the contents of inode 2.
+const EXT2_END_SUPERBLOCK: u64 = 2048;
+const EXT2_ROOT_INODE: u32 = 2;
+pub const EXT2_HINT: LazyCell<Hint> = LazyCell::new(|| { Hint::init().unwrap() } );
 
 #[derive(Debug)]
 pub enum FsError {
     BadBlockSize,
     BadMagic,
+    DoesNotExist,
+    IncorrectParseType,
     NoBlocksPerGroup,
     UnableToReadHint,
 }
 
-pub fn init_ext2() -> Result<(), FsError> {
-    let sb: Box<Superblock> = Superblock::read();
-    //println!("{:?}", sb);
-    if sb.magic != EXT2_MAGIC {
-        Err(FsError::BadMagic)
-    } else if (1024 << sb.log_block_size) % 1024 != 0 {
-        Err(FsError::BadBlockSize)
-    } else if sb.blocks_count / sb.blocks_per_group < 1 {
-        Err(FsError::NoBlocksPerGroup)
-    } else {
-        match unsafe { EXT2_HINT.set(Hint::from_super(&sb)) } {
-            Ok(_) => Ok(()),
-            Err(_) => Err(FsError::UnableToReadHint),
+pub struct Hint {
+    block_size: u32,
+    inode_size: u16,
+    blocks_per_group: u32,
+    inodes_per_group: u32,
+    block_desc_table: Vec<BlockGroupDescriptor>,
+}
+
+impl Hint {
+    pub fn init() -> Result<Hint, FsError> {
+        let sb: Box<Superblock> = Superblock::read()?;
+        Ok(sb.build_hint())
+    }
+
+    // Read block group desc table and just hang on to it in memory.
+    pub fn read_bgdt(offset: u64, num: usize) -> Vec<BlockGroupDescriptor> {
+        let cap = ((size_of::<BlockGroupDescriptor>() * num) + 512) & !511; //Need to be multiple of 512 for blk dev.
+        let buf: Vec<u8> = vec![0; cap]; //Vec::with_capacity(cap);
+        let mut buf = core::mem::ManuallyDrop::new(buf);
+        let _ = Block::new(buf.as_mut_ptr(), cap as u32, offset).unwrap().read();
+        let mut buf = core::mem::ManuallyDrop::new(buf);
+        let raw = buf.as_mut_ptr() as *mut BlockGroupDescriptor;
+        unsafe { Vec::from_raw_parts(raw, num, cap) }
+    }
+}
+
+#[repr(transparent)]
+struct FilePath {
+    inner: String,
+}
+
+impl FilePath {
+    fn new(inner: String) -> Self {
+        Self { inner }
+    }
+}
+
+#[derive(Debug)]
+pub struct FileHandle {
+    inode: Box<Inode>,
+    cursor: u32,
+}
+        
+impl FileHandle {
+    /// All filepaths must be absolute.
+    pub fn open<T: ToString + ?Sized>(path: &T) -> Result<Self, FsError> {
+        let path = FilePath::new(path.to_string());
+        let mut inode = Inode::read(&EXT2_ROOT_INODE);
+        let mut dir = inode.parse_dir()?;
+        for sub in path.inner.split("/") {
+            println!("{}", sub);
+            if let Some(inum) = dir.get(sub) {
+                inode = Inode::read(inum);
+                match inode.get_type().unwrap() {
+                    TypePerm::Directory => {
+                        dir = inode.parse_dir()?;
+                    },
+                    TypePerm::File => { break; },
+                    _ => {
+                        return Err(FsError::IncorrectParseType);
+                    },
+                }
+            } else {
+                return Err(FsError::DoesNotExist);
+            }
         }
+        Ok(Self { inode, cursor: 0 })
     }
 }
 
 pub fn play_ext2() {
-    let root_inode = Inode::read(unsafe{ EXT2_HINT.get().unwrap() }, 2);
-    let dir = root_inode.parse_dir(unsafe{ EXT2_HINT.get().unwrap() }).unwrap();
-    for i in 0..5 {
-        println!("Dir: {:?}", dir[i]);
-    }
-    let spin_inode = Inode::read(unsafe { EXT2_HINT.get().unwrap() }, 12);
-    let sbse_inode = Inode::read(unsafe { EXT2_HINT.get().unwrap() }, 13);
+    //let fd = FileHandle::open("/bin/spin.elf");
+    let root_inode = Inode::read(&2);
+    let dir = root_inode.parse_dir().unwrap();
+    let spin_inode = Inode::read(&12);
+    let sbse_inode = Inode::read(&13);
 }
