@@ -1,55 +1,13 @@
-use crate::alloc::{boxed::Box, vec::Vec, vec, string::String};
+use crate::alloc::{boxed::Box, vec::Vec, vec, string::String, collections::BTreeMap};
 use crate::device::virtio::*;
 use crate::vm::request_phys_page;
+use crate::fs::{EXT2_HINT, FsError, Hint};
 use core::mem::size_of;
+use core::cmp;
 
-const EXT2_START_SUPERBLOCK: u64 = 1024;
+const EXT2_MAGIC: u16 = 0xef53;
+const EXT2_START_SUPERBLOCK: u64 = 1024; 
 const EXT2_END_SUPERBLOCK: u64 = 2048;
-
-//#[repr(C)]
-//#[derive(Debug)]
-//pub struct Ext2 {
-//    pub superblock: Superblock,
-//    pub block_groups: Box<[BlockGroupDescriptor]>,
-//    pub blocks: Vec<Box<[u8]>>,
-//    pub block_size: usize,
-//    pub uuid: [u8; 16], // Uuid <- replacement hack of a real uuid.
-//    pub block_offset: usize, // <- our "device data" actually starts at this index'th block of the device
-//                             // so we have to subtract this number before indexing blocks[]
-//}
-
-pub struct Hint {
-    block_size: u32,
-    inode_size: u16,
-    blocks_per_group: u32,
-    inodes_per_group: u32,
-    block_desc_table: Vec<BlockGroupDescriptor>,
-}
-
-impl Hint {
-    pub fn from_super(sb: &Superblock) -> Self {
-        let bsize = 1024 << sb.log_block_size;
-        let bgd_start = if bsize == 1024 { 2048_u64 } else { bsize as u64 };
-        Hint {
-            block_size: bsize,
-            inode_size: sb.inode_size,
-            blocks_per_group: sb.blocks_per_group,
-            inodes_per_group: sb.inodes_per_group,
-            block_desc_table: Self::read_bgdt(bgd_start, sb.blocks_count.div_ceil(sb.blocks_per_group) as usize),
-        }
-    }
-
-    // Read block group desc table and just hang on to it in memory.
-    fn read_bgdt(offset: u64, num: usize) -> Vec<BlockGroupDescriptor> {
-        let cap = ((size_of::<BlockGroupDescriptor>() * num) + 512) & !511; //Need to be multiple of 512 for blk dev.
-        let buf: Vec<u8> = vec![0; cap]; //Vec::with_capacity(cap);
-        let mut buf = core::mem::ManuallyDrop::new(buf);
-        let _ = Block::new(buf.as_mut_ptr(), cap as u32, offset).unwrap().read();
-        let mut buf = core::mem::ManuallyDrop::new(buf);
-        let raw = buf.as_mut_ptr() as *mut BlockGroupDescriptor;
-        unsafe { Vec::from_raw_parts(raw, num, cap) }
-    }
-}
 
 /// EXT2 Superblock. Graciously borrowed from @dylanmc.
 #[repr(C)]
@@ -58,117 +16,137 @@ impl Hint {
 pub struct Superblock {
     // taken from https://wiki.osdev.org/Ext2
     /// Total number of inodes in file system
-    pub inodes_count: u32,
+    inodes_count: u32,
     /// Total number of blocks in file system
-    pub blocks_count: u32,
+    blocks_count: u32,
     /// Number of blocks reserved for superuser (see offset 80)
-    pub r_blocks_count: u32,
+    r_blocks_count: u32,
     /// Total number of unallocated blocks
-    pub free_blocks_count: u32,
+    free_blocks_count: u32,
     /// Total number of unallocated inodes
-    pub free_inodes_count: u32,
+    free_inodes_count: u32,
     /// Block number of the block containing the superblock
-    pub first_data_block: u32,
+    first_data_block: u32,
     /// log2 (block size) - 10. (In other words, the number to shift 1,024
     /// to the left by to obtain the block size)
-    pub log_block_size: u32,
+    log_block_size: u32,
     /// log2 (fragment size) - 10. (In other words, the number to shift
     /// 1,024 to the left by to obtain the fragment size)
-    pub log_frag_size: i32,
+    log_frag_size: i32,
     /// Number of blocks in each block group
-    pub blocks_per_group: u32,
+    blocks_per_group: u32,
     /// Number of fragments in each block group
-    pub frags_per_group: u32,
+    frags_per_group: u32,
     /// Number of inodes in each block group
-    pub inodes_per_group: u32,
+    inodes_per_group: u32,
     /// Last mount time (in POSIX time)
-    pub mtime: u32,
+    mtime: u32,
     /// Last written time (in POSIX time)
-    pub wtime: u32,
+    wtime: u32,
     /// Number of times the volume has been mounted since its last
     /// consistency check (fsck)
-    pub mnt_count: u16,
+    mnt_count: u16,
     /// Number of mounts allowed before a consistency check (fsck) must be
     /// done
-    pub max_mnt_count: i16,
+    max_mnt_count: i16,
     /// Ext2 signature (0xef53), used to help confirm the presence of Ext2
     /// on a volume
-    pub magic: u16,
+    magic: u16,
     /// File system state (see `FS_CLEAN` and `FS_ERR`)
-    pub state: u16,
+    state: u16,
     /// What to do when an error is detected (see `ERR_IGNORE`, `ERR_RONLY` and
     /// `ERR_PANIC`)
-    pub errors: u16,
+    errors: u16,
     /// Minor portion of version (combine with Major portion below to
     /// ruct full version field)
-    pub rev_minor: u16,
+    rev_minor: u16,
     /// POSIX time of last consistency check (fsck)
-    pub lastcheck: u32,
+    lastcheck: u32,
     /// Interval (in POSIX time) between forced consistency checks (fsck)
-    pub checkinterval: u32,
+    checkinterval: u32,
     /// Operating system ID from which the filesystem on this volume was
     /// created
-    pub creator_os: u32,
+    creator_os: u32,
     /// Major portion of version (combine with Minor portion above to
     /// ruct full version field)
-    pub rev_major: u32,
+    rev_major: u32,
     /// User ID that can use reserved blocks
-    pub block_uid: u16,
+    block_uid: u16,
     /// Group ID that can use reserved blocks
-    pub block_gid: u16,
+    block_gid: u16,
 
     /// First non-reserved inode in file system.
-    pub first_inode: u32,
+    first_inode: u32,
     /// Size of each inode structure in bytes. - only 128 bytes seem used
     /// but modern EXT filesystems seem to use 256 bytes for each inode
-    pub inode_size: u16,
+    inode_size: u16,
     /// Block group that this superblock is part of (if backup copy)
-    pub block_group: u16,
+    block_group: u16,
     /// Optional features present (features that are not required to read
     /// or write, but usually result in a performance increase)
-    pub features_opt: u32,
+    features_opt: u32,
     /// Required features present (features that are required to be
     /// supported to read or write)
-    pub features_req: u32,
+    features_req: u32,
     /// Features that if not supported, the volume must be mounted
     /// read-only)
-    pub features_ronly: u32,
+    features_ronly: u32,
     /// File system ID (what is output by blkid)
-    pub fs_id: [u8; 16],
+    fs_id: [u8; 16],
     /// Volume name (C-style string: characters terminated by a 0 byte)
-    pub volume_name: [u8; 16],
+    volume_name: [u8; 16],
     /// Path volume was last mounted to (C-style string: characters
     /// terminated by a 0 byte)
-    pub last_mnt_path: [u8; 64],
+    last_mnt_path: [u8; 64],
     /// Compression algorithms used (see Required features above)
-    pub compression: u32,
+    compression: u32,
     /// Number of blocks to preallocate for files
-    pub prealloc_blocks_files: u8,
+    prealloc_blocks_files: u8,
     /// Number of blocks to preallocate for directories
-    pub prealloc_blocks_dirs: u8,
+    prealloc_blocks_dirs: u8,
     #[doc(hidden)]
     _unused: [u8; 2],
     /// Journal ID (same style as the File system ID above)
-    pub journal_id: [u8; 16],
+    journal_id: [u8; 16],
     /// Journal inode
-    pub journal_inode: u32,
+    journal_inode: u32,
     /// Journal device
-    pub journal_dev: u32,
+    journal_dev: u32,
     /// Head of orphan inode list
-    pub journal_orphan_head: u32,
+    journal_orphan_head: u32,
 }
 
 impl Superblock {
-    // Example usage:
-    // let sb: Box<Superblock> = Superblock::read(1024);
-    pub fn read() -> Box<Self> {
+    /// Example usage:
+    /// `let sb: Box<Superblock> = Superblock::read();`
+    pub fn read() -> Result<Box<Self>, FsError> {
         let len = (size_of::<Self>() + 512) & !511; //Need to be multiple of 512 for blk dev.
         let mut buf: Vec<u8> = Vec::with_capacity(len);
-        //let mut buf = core::mem::ManuallyDrop::new(buf);
         let _ = Block::new(buf.as_mut_ptr(), len as u32, EXT2_START_SUPERBLOCK).unwrap().read();
         let raw = buf.as_mut_ptr() as *mut Self;
         let sb = unsafe { *raw };
-        Box::new(sb)
+        
+        if sb.magic != EXT2_MAGIC { 
+            Err(FsError::BadMagic)
+        } else if (1024 << sb.log_block_size) % 1024 != 0 { 
+            Err(FsError::BadBlockSize)
+        } else if sb.blocks_count / sb.blocks_per_group < 1 { 
+            Err(FsError::NoBlocksPerGroup)
+        } else {
+            Ok(Box::new(sb))
+        }
+    }
+
+    pub fn build_hint(&self) -> Hint {
+        let bsize = 1024 << self.log_block_size;
+        let bgd_start = if bsize == 1024 { 2048_u64 } else { bsize as u64 };
+        Hint {
+            block_size: bsize,
+            inode_size: self.inode_size,
+            blocks_per_group: self.blocks_per_group,
+            inodes_per_group: self.inodes_per_group,
+            block_desc_table: Hint::read_bgdt(bgd_start, self.blocks_count.div_ceil(self.blocks_per_group) as usize),
+        }
     }
 }
 
@@ -176,17 +154,17 @@ impl Superblock {
 #[derive(Debug, Copy, Clone)]
 pub struct BlockGroupDescriptor {
     /// Block address of block usage bitmap
-    pub block_usage_addr: u32,
+    block_usage_addr: u32,
     /// Block address of inode usage bitmap
-    pub inode_usage_addr: u32,
+    inode_usage_addr: u32,
     /// Starting block address of inode table
-    pub inode_table_block: u32,
+    inode_table_block: u32,
     /// Number of unallocated blocks in group
-    pub free_blocks_count: u16,
+    free_blocks_count: u16,
     /// Number of unallocated inodes in group
-    pub free_inodes_count: u16,
+    free_inodes_count: u16,
     /// Number of directories in group
-    pub dirs_count: u16,
+    dirs_count: u16,
 
     _reserved: [u8; 14],
 }
@@ -195,61 +173,62 @@ pub struct BlockGroupDescriptor {
 #[derive(Debug, Copy, Clone)]
 pub struct Inode {
     /// Type and Permissions (see below)
-    pub type_perm: u16, // TypePerm. TODO: Should integrate bitflags! into my life at some point.
+    type_perm: u16, // TypePerm. TODO: Should integrate bitflags! into my life at some point.
     /// User ID
-    pub uid: u16,
+    uid: u16,
     /// Lower 32 bits of size in bytes
-    pub size_low: u32,
+    size_low: u32,
     /// Last Access Time (in POSIX time)
-    pub atime: u32,
+    atime: u32,
     /// Creation Time (in POSIX time)
-    pub ctime: u32,
+    ctime: u32,
     /// Last Modification time (in POSIX time)
-    pub mtime: u32,
+    mtime: u32,
     /// Deletion time (in POSIX time)
-    pub dtime: u32,
+    dtime: u32,
     /// Group ID
-    pub gid: u16,
+    gid: u16,
     /// Count of hard links (directory entries) to this inode. When this
     /// reaches 0, the data blocks are marked as unallocated.
-    pub hard_links: u16,
+    hard_links: u16,
     /// Count of disk sectors (not Ext2 blocks) in use by this inode, not
     /// counting the actual inode structure nor directory entries linking
     /// to the inode.
-    pub sectors_count: u32,
+    sectors_count: u32,
     /// Flags
-    pub flags: u32,
+    flags: u32,
     /// Operating System Specific value #1
-    pub _os_specific_1: [u8; 4],
+    _os_specific_1: [u8; 4],
     /// Direct block pointers
-    pub direct_pointer: [u32; 12],
+    direct_pointer: [u32; 12],
     /// Singly Indirect Block Pointer (Points to a block that is a list of
     /// block pointers to data)
-    pub indirect_pointer: u32,
+    indirect_pointer: u32,
     /// Doubly Indirect Block Pointer (Points to a block that is a list of
     /// block pointers to Singly Indirect Blocks)
-    pub doubly_indirect: u32,
+    doubly_indirect: u32,
     /// Triply Indirect Block Pointer (Points to a block that is a list of
     /// block pointers to Doubly Indirect Blocks)
-    pub triply_indirect: u32,
+    triply_indirect: u32,
     /// Generation number (Primarily used for NFS)
-    pub gen_number: u32,
+    gen_number: u32,
     /// In Ext2 version 0, this field is reserved. In version >= 1,
     /// Extended attribute block (File ACL).
-    pub ext_attribute_block: u32,
+    ext_attribute_block: u32,
     /// In Ext2 version 0, this field is reserved. In version >= 1, Upper
     /// 32 bits of file size (if feature bit set) if it's a file,
     /// Directory ACL if it's a directory
-    pub size_high: u32,
+    size_high: u32,
     /// Block address of fragment
-    pub frag_block_addr: u32,
+    frag_block_addr: u32,
     /// Operating System Specific Value #2
-    pub _os_specific_2: [u8; 12],
+    _os_specific_2: [u8; 12],
     _padding: [u8; 128], // TODO: handle inode sizes != 128 according to superblock
 }
 
 impl Inode {
-    pub fn read(hint: &Hint, inum: u32) -> Box<Inode> {
+    pub fn read(inum: &u32) -> Box<Inode> {
+        let hint = &*EXT2_HINT;
         // Find which block group to search.
         let block_group = ((inum - 1) / hint.inodes_per_group) as usize;
         // Get bg inode table starting block addr
@@ -261,81 +240,110 @@ impl Inode {
         // Find byte address
         let offset = ((itable + block) as u64 * hint.block_size as u64) as u64;
 
-        // let mut buf: Vec<u8> = vec![0_u8; hint.block_size as usize];//Vec::with_capacity(hint.block_size as usize);
-        //let mut buf = core::mem::ManuallyDrop::new(buf);
-        let buf = request_phys_page(1).unwrap();
-        let _ = Block::new(buf.start() as *mut u8, 4096, offset).unwrap().read();
-        // let index_off = (index * hint.inode_size as u32) as usize;
-        // assert_eq!(index_off % hint.inode_size as usize, 0);
-        let raw = unsafe { (buf.start() as *mut Self).add(index as usize) };
+        //let buf = request_phys_page(1).unwrap();
+        let mut buf = Vec::with_capacity(size_of::<Inode>() * 2);
+        let index_off = (index * hint.inode_size as u32) as u64;
+        let offset = (offset + index_off) & !511;
+        let _ = Block::new(buf.as_mut_ptr(), buf.capacity() as u32, offset).unwrap().read();
+        let raw_off = if index_off % 512 == 0 { 0 } else { hint.inode_size };
+        //let raw = unsafe { (buf.start() as *mut Self).add(index as usize) }
+        let raw = unsafe { buf.as_ptr().byte_add(raw_off as usize) as *mut Self };
         let inode = unsafe { *raw };
         Box::new(inode)
     }
 
-    pub fn parse_dir(&self, hint: &Hint) -> Result<Vec<DirectoryPair>, ()> {
-        let bsize = hint.block_size as usize;
+    pub fn get_type(&self) -> Option<TypePerm> {
         let tp = self.type_perm;
-        let mut buf: Vec<u8> = vec![0; bsize];
-        //let mut buf = core::mem::ManuallyDrop::new(buf);
-        let _ = Block::new(buf.as_mut_ptr(), bsize as u32, (self.direct_pointer[0] * hint.block_size) as u64).unwrap().read();
-        if tp & (TypePerm::Directory as u16) == TypePerm::Directory as u16 {
-            // Now iterate directory linked list.
-            // TODO: Use hashed directories.
-            let ptr = buf.as_mut_ptr();
-            let mut ret = Vec::new();
-            let mut idx = 0;
-            while idx < bsize {
-                let de = unsafe { ptr.byte_add(idx) as *mut DirectoryEntry };
-                let inode = unsafe { (*de).inode };
-                let nsize = unsafe { (*de).name_length };
-                let dname = unsafe { &mut (*de).name as *const u8};
-                let dsize = unsafe { (*de).entry_size };
-                let nvec = unsafe { core::slice::from_raw_parts(dname, nsize as usize) };
-                let dname = String::from_utf8(nvec.to_vec()).unwrap(); //Self::build_name(nvec);
-                ret.push(DirectoryPair::new(inode, dname));
-                idx += dsize as usize;
-            }
-            Ok(ret)
-            //Ok ( unsafe { Vec::from_raw_parts( buf.as_mut_ptr() as *mut DirectoryEntry, bsize, bsize ) } )
+        if tp & (TypePerm::File as u16) == TypePerm::File as u16 {
+            Some(TypePerm::File)
+        } else if tp & (TypePerm::Directory as u16) == TypePerm::Directory as u16 {
+            Some(TypePerm::Directory)
         } else {
-            log!(Error, "Inode parsing type not implemented.");
-            Err(())
+            None
         }
     }
-}
 
-#[derive(Debug)]
-pub struct DirectoryPair {
-    pub inode: u32,
-    pub name: String,
-}
+    pub fn parse_file(&self, buf: &mut [u8]) -> Result<u32, FsError>{
+        let hint = &*EXT2_HINT;
+        let bsize = hint.block_size;
+        let tp = self.type_perm & TypePerm::File as u16;
+        if tp != TypePerm::File as u16 {
+            return Err(FsError::IncorrectParseType);
+        }
+        let buf_len = buf.len() as u32;
+        let buf_ptr = buf.as_mut_ptr();
+        let mut nread: u32 = 0;
+        for p in self.direct_pointer {
+            if p != 0 {
+                if nread >= buf_len { break; }
+                let buf_ptr = unsafe { buf_ptr.byte_add(nread as usize) };
+                let len = cmp::min(bsize, buf_len - nread);
+                let _ = Block::new(buf_ptr, len, (p*bsize) as u64).unwrap().read();
+                nread += bsize;
+            }
+        }
+        Ok(nread)
+    }
 
-impl DirectoryPair {
-    pub fn new(inode: u32, name: String) -> Self {
-        Self { inode, name }
+    /// Given a directory inode, parse its entries to discover the contents of the dir
+    /// by iterating the non-zero direct pointers.
+    /// TODO: Support single indirect pointers.
+    /// Double or triple indirect pointer support is not implemented at this time.
+    pub fn parse_dir(&self) -> Result<BTreeMap<String, u32>, FsError> {
+        let hint = &*EXT2_HINT;
+        let bsize = hint.block_size as usize;
+        let mut buf: Vec<u8> = vec![0; bsize];
+
+        let tp = self.type_perm & TypePerm::Directory as u16;
+        if tp != TypePerm::Directory as u16 {
+            return Err(FsError::IncorrectParseType);
+        }
+
+        let mut ret = BTreeMap::new();
+        for p in self.direct_pointer {
+            if p != 0 {
+                let _ = Block::new(buf.as_mut_ptr(), bsize as u32, (p * bsize as u32) as u64).unwrap().read();
+                let ptr = buf.as_mut_ptr();
+                let mut idx = 0;
+                while idx < bsize {
+                    let de = unsafe { ptr.byte_add(idx) as *mut DirectoryEntry };
+                    let inode = unsafe { (*de).inode };
+                    let nsize = unsafe { (*de).name_length };
+                    let dname = unsafe { &mut (*de).name as *const u8};
+                    let dsize = unsafe { (*de).entry_size };
+                    let nvec = unsafe { core::slice::from_raw_parts(dname, nsize as usize) };
+                        let dname = String::from_utf8(nvec.to_vec()).unwrap(); //Self::build_name(nvec);
+                    if inode != 0 {
+                        ret.insert(dname, inode);
+                    }
+                    idx += dsize as usize;
+                }
+            }
+        }
+        Ok(ret)
     }
 }
 
 // Linked List directory entry.
 #[repr(C)]
 #[derive(Debug)] //, Copy, Clone)]
-pub struct DirectoryEntry {
+struct DirectoryEntry {
     /// Inode
-    pub inode: u32,
+    inode: u32,
     /// Total size of this entry (Including all subfields)
     /// (offset to start of next entry)
-    pub entry_size: u16,
+    entry_size: u16,
     /// Name Length least-significant 8 bits
-    pub name_length: u8,
+    name_length: u8,
     /// Type indicator (only if the feature bit for "directory entries have file type byte" is set, else this is the most-significant 8 bits of the Name Length)
-    pub type_indicator: u8,
+    type_indicator: u8,
 
-    pub name: u8, // Read in byte slice and do str::from_utf8()
+    name: u8, // Read in byte slice and do str::from_utf8()
 }
 
 #[repr(C)]
 #[derive(Debug)]
-pub enum TypeIndicator {
+enum TypeIndicator {
     Unknown = 0,
     Regular = 1,
     Directory = 2,
