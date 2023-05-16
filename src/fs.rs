@@ -77,13 +77,13 @@ pub struct FileHandle {
         
 impl FileHandle {
     /// All filepaths must be absolute.
+    /// TODO: Make this less unpleasant to look at.
     pub fn open<T: ToString + ?Sized>(path: &T) -> Result<Self, FsError> {
         let path = FilePath::new(path.to_string());
         let working= path.inner.get(1..).unwrap().to_string();
         let mut inode = Inode::read(EXT2_ROOT_INODE);
         let mut dir = inode.parse_dir()?;
         for sub in working.split("/").into_iter() {
-            println!("curdir: {:?}", dir);
             if let Some(inum) = Self::linear_search_dir(sub, &dir) {
                 inode = Inode::read(inum);
                 match inode.get_type().unwrap() {
@@ -115,4 +115,8 @@ impl FileHandle {
 pub fn play_ext2() {
     let fd = FileHandle::open("/bin/spin.elf").unwrap();
     println!("My first fd: {:?}", fd);
+    
+    // This doesn't work. Block I/O error.
+    //let fd1 = FileHandle::open("/bin").unwrap();
+    //println!("My second fd: {:?}", fd1);
 }
