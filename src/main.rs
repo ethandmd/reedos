@@ -1,6 +1,7 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
+#![feature(lazy_cell)]
 #![feature(int_roundings)]
 #![feature(pointer_byte_offsets)]
 #![feature(error_in_core)]
