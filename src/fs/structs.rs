@@ -1,6 +1,6 @@
 use crate::alloc::{boxed::Box, vec::Vec, vec, string::String, collections::BTreeMap};
 use crate::device::virtio::*;
-use crate::vm::request_phys_page;
+//use crate::vm::request_phys_page;
 use crate::fs::{EXT2_HINT, FsError, Hint};
 use core::mem::size_of;
 use core::cmp;
@@ -228,7 +228,7 @@ pub struct Inode {
 
 impl Inode {
     pub fn read(inum: &u32) -> Box<Inode> {
-        let hint = &*EXT2_HINT;
+        let hint = unsafe { EXT2_HINT.get().unwrap() };
         // Find which block group to search.
         let block_group = ((inum - 1) / hint.inodes_per_group) as usize;
         // Get bg inode table starting block addr
@@ -241,7 +241,8 @@ impl Inode {
         let offset = ((itable + block) as u64 * hint.block_size as u64) as u64;
 
         //let buf = request_phys_page(1).unwrap();
-        let mut buf = Vec::with_capacity(size_of::<Inode>() * 2);
+        //let mut buf = Vec::with_capacity(size_of::<Inode>() * 2);
+        let mut buf = vec![0_u8; size_of::<Inode>() * 2];
         let index_off = (index * hint.inode_size as u32) as u64;
         let offset = (offset + index_off) & !511;
         let _ = Block::new(buf.as_mut_ptr(), buf.capacity() as u32, offset).unwrap().read();
@@ -264,7 +265,7 @@ impl Inode {
     }
 
     pub fn parse_file(&self, buf: &mut [u8]) -> Result<u32, FsError>{
-        let hint = &*EXT2_HINT;
+        let hint = unsafe { EXT2_HINT.get().unwrap() };
         let bsize = hint.block_size;
         let tp = self.type_perm & TypePerm::File as u16;
         if tp != TypePerm::File as u16 {
@@ -290,7 +291,7 @@ impl Inode {
     /// TODO: Support single indirect pointers.
     /// Double or triple indirect pointer support is not implemented at this time.
     pub fn parse_dir(&self) -> Result<BTreeMap<String, u32>, FsError> {
-        let hint = &*EXT2_HINT;
+        let hint = unsafe { EXT2_HINT.get().unwrap() };
         let bsize = hint.block_size as usize;
         let mut buf: Vec<u8> = vec![0; bsize];
 

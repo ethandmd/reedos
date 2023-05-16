@@ -7,12 +7,12 @@ pub mod structs;
 use structs::*;
 use crate::alloc::{boxed::Box, vec::Vec, vec, string::{String, ToString}};
 use crate::device::virtio::Block;
-use core::cell::LazyCell;
+use core::cell::OnceCell;
 use core::mem::size_of;
 
 const EXT2_END_SUPERBLOCK: u64 = 2048;
 const EXT2_ROOT_INODE: u32 = 2;
-pub const EXT2_HINT: LazyCell<Hint> = LazyCell::new(|| { Hint::init().unwrap() } );
+pub static mut EXT2_HINT: OnceCell<Hint> = OnceCell::new();
 
 #[derive(Debug)]
 pub enum FsError {
@@ -33,9 +33,15 @@ pub struct Hint {
 }
 
 impl Hint {
-    pub fn init() -> Result<Hint, FsError> {
+    pub fn init() -> Result<(), FsError> {
         let sb: Box<Superblock> = Superblock::read()?;
-        Ok(sb.build_hint())
+        let hint = sb.build_hint();
+        unsafe {
+            match EXT2_HINT.set(hint) {
+                Ok(_) => Ok(()),
+                Err(_) => Err(FsError::UnableToReadHint),
+            }
+        }
     }
 
     // Read block group desc table and just hang on to it in memory.
