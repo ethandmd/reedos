@@ -57,6 +57,7 @@ impl Hint {
 }
 
 #[repr(transparent)]
+#[derive(Debug)]
 struct FilePath {
     inner: String,
 }
@@ -69,6 +70,7 @@ impl FilePath {
 
 #[derive(Debug)]
 pub struct FileHandle {
+    path: FilePath,
     inode: Box<Inode>,
     cursor: u32,
 }
@@ -77,11 +79,12 @@ impl FileHandle {
     /// All filepaths must be absolute.
     pub fn open<T: ToString + ?Sized>(path: &T) -> Result<Self, FsError> {
         let path = FilePath::new(path.to_string());
-        let mut inode = Inode::read(&EXT2_ROOT_INODE);
+        let working= path.inner.get(1..).unwrap().to_string();
+        let mut inode = Inode::read(EXT2_ROOT_INODE);
         let mut dir = inode.parse_dir()?;
-        for sub in path.inner.split("/") {
-            println!("{}", sub);
-            if let Some(inum) = dir.get(sub) {
+        for sub in working.split("/").into_iter() {
+            println!("curdir: {:?}", dir);
+            if let Some(inum) = Self::linear_search_dir(sub, &dir) {
                 inode = Inode::read(inum);
                 match inode.get_type().unwrap() {
                     TypePerm::Directory => {
@@ -96,14 +99,20 @@ impl FileHandle {
                 return Err(FsError::DoesNotExist);
             }
         }
-        Ok(Self { inode, cursor: 0 })
+        Ok(Self { path, inode, cursor: 0 })
+    }
+
+    fn linear_search_dir(tgt: &str, slice: &[DirPair]) -> Option<u32> {
+        for e in slice {
+            if tgt == e.name {
+                return Some(e.inode);
+            }
+        }
+        None
     }
 }
 
 pub fn play_ext2() {
-    //let fd = FileHandle::open("/bin/spin.elf");
-    let root_inode = Inode::read(&2);
-    let dir = root_inode.parse_dir().unwrap();
-    let spin_inode = Inode::read(&12);
-    let sbse_inode = Inode::read(&13);
+    let fd = FileHandle::open("/bin/spin.elf").unwrap();
+    println!("My first fd: {:?}", fd);
 }

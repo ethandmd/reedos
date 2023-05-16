@@ -1,4 +1,4 @@
-use crate::alloc::{boxed::Box, vec::Vec, vec, string::String, collections::BTreeMap};
+use crate::alloc::{boxed::Box, vec::Vec, vec, string::String};
 use crate::device::virtio::*;
 //use crate::vm::request_phys_page;
 use crate::fs::{EXT2_HINT, FsError, Hint};
@@ -227,7 +227,7 @@ pub struct Inode {
 }
 
 impl Inode {
-    pub fn read(inum: &u32) -> Box<Inode> {
+    pub fn read(inum: u32) -> Box<Inode> {
         let hint = unsafe { EXT2_HINT.get().unwrap() };
         // Find which block group to search.
         let block_group = ((inum - 1) / hint.inodes_per_group) as usize;
@@ -290,7 +290,7 @@ impl Inode {
     /// by iterating the non-zero direct pointers.
     /// TODO: Support single indirect pointers.
     /// Double or triple indirect pointer support is not implemented at this time.
-    pub fn parse_dir(&self) -> Result<BTreeMap<String, u32>, FsError> {
+    pub fn parse_dir(&self) -> Result<Vec<DirPair>, FsError> {
         let hint = unsafe { EXT2_HINT.get().unwrap() };
         let bsize = hint.block_size as usize;
         let mut buf: Vec<u8> = vec![0; bsize];
@@ -300,7 +300,7 @@ impl Inode {
             return Err(FsError::IncorrectParseType);
         }
 
-        let mut ret = BTreeMap::new();
+        let mut ret = Vec::new();
         for p in self.direct_pointer {
             if p != 0 {
                 let _ = Block::new(buf.as_mut_ptr(), bsize as u32, (p * bsize as u32) as u64).unwrap().read();
@@ -315,13 +315,25 @@ impl Inode {
                     let nvec = unsafe { core::slice::from_raw_parts(dname, nsize as usize) };
                         let dname = String::from_utf8(nvec.to_vec()).unwrap(); //Self::build_name(nvec);
                     if inode != 0 {
-                        ret.insert(dname, inode);
+                        ret.push(DirPair::new(dname, inode));
                     }
                     idx += dsize as usize;
                 }
             }
         }
         Ok(ret)
+    }
+}
+
+#[derive(Debug)]
+pub struct DirPair {
+    pub name: String,
+    pub inode: u32,
+}
+
+impl DirPair {
+    pub fn new(name: String, inode: u32) -> Self {
+        Self { name, inode }
     }
 }
 
