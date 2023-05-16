@@ -261,8 +261,9 @@ pub struct Block {
 }
 
 impl Block {
+    // TODO: Hardcoded 4k block size. Prevent reading past fs block bounds.
     pub fn new(data: *mut u8, len: u32, offset: u64) -> Result<Self, ()> {
-        if len % 512 == 0 {
+        if len % 512 == 0 && len <= 4096 {
             Ok(Self { data, len, offset })
         } else {
             Err(())
