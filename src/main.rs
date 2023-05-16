@@ -162,11 +162,7 @@ fn main() -> ! {
             println!("{:?}", e);
         }
         log!(Debug, "Initializing EXT2 fs...");
-        if let Err(e) = fs::init_ext2() {
-            log!(Error, "Initializing EXT2 fs: {:?}", e);
-        } else {
-            fs::play_ext2();
-        }
+        fs::play_ext2();
 
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
