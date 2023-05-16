@@ -15,8 +15,8 @@ dd if=/dev/zero of=fs.img bs=512 count=524288 # 256MB file
 ## copy root dir contents into to the filesystem root dir.
 make -C ./src/programs/spin
 make -C ./src/programs/syscall-basic
-mkdir tmp
-find ./src/programs -name '*.elf' -exec cp {} ./tmp \;
+mkdir -p tmp/bin/
+find ./src/programs -name '*.elf' -exec cp {} ./tmp/bin \;
 mkfs.ext2 -b 4096 -c fs.img  -d ./tmp
 rm -rf ./tmp
 
