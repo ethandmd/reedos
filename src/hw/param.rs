@@ -30,8 +30,27 @@ use core::ptr::addr_of_mut;
 /// CLINT base address.
 pub const CLINT_BASE: usize = 0x2000000;
 
+/// PLIC base address.
+pub const PLIC_BASE: usize = 0xc000000;
+
+/// PLIC size in memory
+pub const PLIC_SIZE: usize = 0x400000;
+//TODO this should be a function of NHART
+
 /// UART base adderss.
 pub const UART_BASE: usize = 0x10000000;
+
+/// UART interrupt request number.
+pub const UART_IRQ: usize = 10;
+
+/// VIRTIO base address.
+pub const VIRTIO_BASE:usize = 0x10001000;
+
+/// VIRTIO size.
+pub const VIRTIO_SIZE: usize = 0x4000;
+
+/// VIRTIO interrupt request number.
+pub const VIRTIO_IRQ: usize = 1;
 
 /// Start of kernel memory (first .text section goes here).
 pub const DRAM_BASE: *mut usize = 0x80000000 as *mut usize;

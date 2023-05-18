@@ -63,15 +63,20 @@ regular_strap:
         ## top bit mode and PPN
 
         sfence.vma x0, x0
-        csrw satp, t1
+        csrrw s1, satp, t1
         sfence.vma x0, x0
-        ## now in kernel space
+        ## now in kernel space, note that s1 should not be distrubed
+        ## by rust
 
         ## get gp back to restore more info from later
         ld gp, 256(sp)
 
         .extern s_handler
         call s_handler
+
+        sfence.vma x0, x0
+        csrw satp, s1
+        sfence.vma x0, x0
 
         load_gp_regs
         csrrw sp, sscratch, sp

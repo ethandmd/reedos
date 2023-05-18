@@ -158,10 +158,10 @@ impl Process {
             text_end().addr() - text_start().addr(),
             kernel_process_flags(true, false, true)
         )?;
-        log!(
-            Debug,
-            "Sucessfully mapped kernel text into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Sucessfully mapped kernel text into process pgtable..."
+        // );
 
         page_map(
             self.pgtbl,
@@ -170,10 +170,10 @@ impl Process {
             rodata_end().addr() - text_end().addr(),
             kernel_process_flags(true, false, false),
         )?;
-        log!(
-            Debug,
-            "Succesfully mapped kernel rodata into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Succesfully mapped kernel rodata into process pgtable..."
+        // );
 
         page_map(
             self.pgtbl,
@@ -182,10 +182,10 @@ impl Process {
             data_end().addr() - rodata_end().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(
-            Debug,
-            "Succesfully mapped kernel data into process pgtable..."
-        );
+        // log!(
+        //     Debug,
+        //     "Succesfully mapped kernel data into process pgtable..."
+        // );
 
         // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
         // problem.
@@ -199,11 +199,11 @@ impl Process {
                 PAGE_SIZE * 2,
                 kernel_process_flags(true, true, false),
             )?;
-            log!(
-                Debug,
-                "Succesfully mapped kernel stack {} into process pgtable...",
-                s
-            );
+        //     log!(
+        //         Debug,
+        //         "Succesfully mapped kernel stack {} into process pgtable...",
+        //         s
+        //     );
         }
 
         // This maps hart 0, 1 stack pages in opposite order as entry.S. Shouln't necessarily be a
@@ -228,11 +228,11 @@ impl Process {
                 PAGE_SIZE,
                 kernel_process_flags(true, true, false),
             )?;
-            log!(
-                Debug,
-                "Succesfully mapped interrupt stack for hart {} into process pgtable...",
-                i
-            );
+        //     log!(
+        //         Debug,
+        //         "Succesfully mapped interrupt stack for hart {} into process pgtable...",
+        //         i
+        //     );
         }
 
         page_map(
@@ -242,7 +242,7 @@ impl Process {
             bss_end().addr() - bss_start().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(Debug, "Succesfully mapped kernel bss into process...");
+        // log!(Debug, "Succesfully mapped kernel bss into process...");
 
         page_map(
             self.pgtbl,
@@ -251,7 +251,7 @@ impl Process {
             memory_end().addr() - bss_end().addr(),
             kernel_process_flags(true, true, false),
         )?;
-        log!(Debug, "Succesfully mapped kernel heap into process...");
+        // log!(Debug, "Succesfully mapped kernel heap into process...");
 
         Ok(())
     }
@@ -447,7 +447,7 @@ fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
         }
     }
 
-    log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
+    // log!(Debug, "Hart {}: Process {} yielded.", read_tp(), proc.id);
 
 
     // This is careful code to avoid holding the lock when we enter

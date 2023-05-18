@@ -251,14 +251,14 @@ impl Zone {
     fn decrement_refs(&mut self) -> Result<usize, KallocError> {
         // Given a usize can't be < 0, I want to catch that and not cause a panic.
         // This may truly be unnecessary, but just want to be cautious.
-        let new_count = self.get_refs() - 1;
+        let new_count: isize = (self.get_refs()) as isize - 1;
         if (new_count as isize) < 0 {
             Err(KallocError::MinRefs)
         } else {
             unsafe {
-                self.write_refs(new_count);
+                self.write_refs(new_count as usize);
             }
-            Ok(new_count)
+            Ok(new_count as usize)
         }
     }
 

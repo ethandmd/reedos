@@ -1,6 +1,8 @@
 //! minimal rust kernel built for (qemu virt machine) riscv.
 #![no_std]
 #![no_main]
+#![feature(lazy_cell)]
+#![feature(int_roundings)]
 #![feature(pointer_byte_offsets)]
 #![feature(error_in_core)]
 #![feature(sync_unsafe_cell)]
@@ -25,11 +27,13 @@ pub mod trap;
 pub mod vm;
 pub mod process;
 pub mod file;
+pub mod fs;
 
 
 use crate::hw::hartlocal;
 use crate::vm::ptable::PageTable;
 use crate::device::uart;
+use crate::device::plic;
 use crate::hw::param;
 use crate::hw::riscv::*;
 use crate::lock::condition::ConditionVar;
@@ -141,6 +145,8 @@ fn main() -> ! {
             }
         }
         log!(Info, "Initialized the kernel page table...");
+        plic::global_init();
+        log!(Info, "Finished plic globl init...");
         unsafe {
             log!(Debug, "Testing page allocation and freeing...");
             vm::test_palloc();
@@ -151,9 +157,20 @@ fn main() -> ! {
         vm::test_phys_page();
         log!(Debug, "Successful phys page extent allocation and freeing...");
 
+        log!(Debug, "Initializing VIRTIO blk device...");
+        if let Err(e) = device::virtio::virtio_block_init() {
+            println!("{:?}", e);
+        }
+        log!(Debug, "Initializing EXT2 fs...");
+        if let Ok(_) = fs::Hint::init() {
+            fs::play_ext2();
+        }
+
         process::init_process_structure();
         hartlocal::hartlocal_info_interrupt_stack_init();
         log!(Debug, "Successfuly initialized the process system...");
+        plic::local_init();
+        log!(Info, "Finished plic local init hart0...");
         log!(Info, "Completed all hart0 initialization and testing...");
 
         unsafe {
@@ -171,10 +188,13 @@ fn main() -> ! {
             vm::local_init(KERNEL_PAGE_TABLE.get().unwrap());
         }
         hartlocal::hartlocal_info_interrupt_stack_init();
+        plic::local_init();
         log!(Info, "Completed all hart{} local initialization", read_tp());
+
     }
 
+    // we want to test multiple processes with multiple harts
+    // process::test_multiprocess_syscall();
     loop {}
-
-    // panic!("Reached the end of kernel main! Did the root process not start?");
+    panic!("Reached the end of kernel main! Did the root process not start?");
 }
