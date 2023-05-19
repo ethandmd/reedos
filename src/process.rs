@@ -11,16 +11,17 @@ use core::mem::{size_of, MaybeUninit};
 use core::ptr::{copy_nonoverlapping, null_mut};
 use core::cell::OnceCell;
 
+use crate::fs::FileHandle;
 // use crate::hw::HartContext;
 // use crate::trap::TrapFrame;
 use crate::vm::ptable::*;
 use crate::vm::VmError;
-use crate::hw::riscv::read_tp;
 use crate::hw::param::*;
 use crate::vm::{request_phys_page, PhysPageExtent};
 use crate::file::elf64::*;
 use crate::hw::hartlocal::*;
 use crate::lock::mutex::Mutex;
+use crate::id::IdGenerator;
 
 
 mod pid;
@@ -43,6 +44,7 @@ static mut QUEUE: OnceCell<Mutex<ProcessQueue>> = OnceCell::new();
 /// Global init for all process related stuff. Not exaustive, also
 /// need hartlocal_info_interrupt_stack_init
 pub fn init_process_structure() {
+    todo!("Switch pid system to general");
     init_pid_subsystem();
     unsafe {
         match QUEUE.set(Mutex::new(ProcessQueue::new())) {
@@ -84,8 +86,12 @@ pub struct Process {
     pgtbl: PageTable,                     // uninizalied with null
     phys_pages: MaybeUninit<VecDeque<PhysPageExtent>>, // vec to avoid Ord requirement
     // ^ hopefully it's clear how this is uninit
-    // TODO consider this as a OnceCell
-    file_buffers: MaybeUninit<BTreeMap<usize, PhysPageExtent>>,
+    // Note this is not exhuastive. It does not contain file buffer pages for instance
+
+    file_buffers: MaybeUninit<BTreeMap<usize, (
+        Option<FileHandle>, PhysPageExtent
+    )>>,
+    file_id_gen: IdGenerator,
 
     // currently unused, but needed in the future
     // address_space: BTreeSet<Box<dyn Resource>>, // todo: Balanced BST of Resources
@@ -102,6 +108,7 @@ impl Process {
             pgtbl: PageTable::new(null_mut()),
             phys_pages: MaybeUninit::uninit(),
             file_buffers: MaybeUninit::uninit(),
+            file_id_gen: IdGenerator::new(),
             saved_pc: 0,
             saved_sp: 0,
         };
@@ -117,15 +124,19 @@ impl Process {
                 self.pgtbl = PageTable::new(pt.start());
                 self.phys_pages.write(VecDeque::new());
                 self.file_buffers.write(BTreeMap::new());
+                self.file_id_gen = IdGenerator::new();
+                assert!(self.file_id_gen.generate() == 0);
+                assert!(self.file_id_gen.generate() == 1);
+                assert!(self.file_id_gen.generate() == 2);
                 unsafe {
                     self.phys_pages.assume_init_mut().push_back(pt);
                     let fb = self.file_buffers.assume_init_mut();
-                    fb.insert(0, request_phys_page(1)
-                              .expect("Could not allocate pipe buffers for process"));
-                    fb.insert(1, request_phys_page(1)
-                              .expect("Could not allocate pipe buffers for process"));
-                    fb.insert(2, request_phys_page(1)
-                              .expect("Could not allocate pipe buffers for process"));
+                    fb.insert(0, (None, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process")));
+                    fb.insert(1, (None, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process")));
+                    fb.insert(2, (None, request_phys_page(1)
+                              .expect("Could not allocate pipe buffers for process")));
                 }
             },
             ProcessState::Running => {
@@ -374,7 +385,7 @@ impl Process {
         let saved_pc = self.saved_pc;
         let pgtbl_base = self.pgtbl.base as usize;
         let saved_sp = self.saved_sp;
-        let gpi = GPInfo::new(self, GPCause::None);
+        let gpi = GPInfo::new(self, GPCause::None, Ok(0));
         save_gp_info64(gpi);
 
         unsafe {
@@ -391,7 +402,7 @@ impl Process {
     /// from kernel space
     ///
     /// See above comment about data movement of a process struct
-    pub fn resume(mut self) -> ! {
+    pub fn resume(mut self, ret: GPRetVal) -> ! {
         match self.state {
             ProcessState::Ready => {},
             _ => {
@@ -405,7 +416,7 @@ impl Process {
         let saved_pc = self.saved_pc;
         let pgtbl_base = self.pgtbl.base as usize;
         let saved_sp = self.saved_sp;
-        let gpi = GPInfo::new(self, GPCause::None);
+        let gpi = GPInfo::new(self, GPCause::None, ret);
         save_gp_info64(gpi);
 
         unsafe {
@@ -459,7 +470,8 @@ fn process_pause(pc: usize, sp: usize, cause: usize) -> ! {
         next = locked.get_ready_process();
     }
     match next.state {
-        ProcessState::Ready => {next.resume()},
+        ProcessState::Ready => {next.resume(Ok(0))},
+        // TODO ^ Should gpi return be a proc field instead?
         ProcessState::Unstarted => {next.start()},
         _ => {panic!("Bad process state from scheduler!")}
     }
@@ -483,7 +495,8 @@ pub extern "C" fn process_exit_rust(exit_code: isize) -> ! {
         next = locked.get_ready_process();
     }
     match next.state {
-        ProcessState::Ready => {next.resume()},
+        ProcessState::Ready => {next.resume(Ok(0))},
+        // TODO ^ Should gpi return be a proc field instead?
         ProcessState::Unstarted => {next.start()},
         _ => {panic!("Bad process state from scheduler!")}
     }
@@ -543,7 +556,7 @@ pub fn _test_multiprocess_syscall() {
     }
     match enter.state {
         ProcessState::Unstarted => enter.start(),
-        ProcessState::Ready => enter.resume(),
+        ProcessState::Ready => enter.resume(Ok(0)),
         _ => {panic!()}
     }
 

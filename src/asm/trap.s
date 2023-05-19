@@ -132,6 +132,9 @@ scall_asm:
 ### of stack changes, this cannot be made into a asm function for
 ### reuse
 
+        ## a regs are caller saved, we can clobber here
+        addi sp, sp, 64
+
         ## change stacks/page table here
         ld a0, (sp)
         addi sp, sp, 8
@@ -175,6 +178,7 @@ scall_asm:
         ## get on the main kernel stack
         ld sp, 16(sp)
 
+        j enter_rust_caller
 ### -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 ### This is the end of the context switch
 ### We are fully in kernel space now.
@@ -193,11 +197,18 @@ dont_change_stack:
 
         csrrw sp, sscratch, sp  #program stack
 
+### We are on the appropriate stack, whatever it is, and we can get
+### into the rust caller to do our work. Note that if you entered in
+### kernel space/stack, you need to exit back to the process with a
+### process_resume instead of just returning from rust handler
+enter_rust_caller:
         addi sp, sp, -8
         sd ra, (sp)
         ## call the main handler
         jal scall_rust
-
+        ## we only actually come out of this for non-kernel directed
+        ## syscalls, so we don't need to worry about more stack stuff
+        ## here
 
         ## this is odd in terms of name, but is already saved for us,
         ## so might as well use it

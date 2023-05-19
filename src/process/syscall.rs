@@ -25,24 +25,72 @@ pub extern "C" fn kernel_excursion_rust() -> ! {
     let mut gpi = restore_gp_info64();
     gpi.current_process.saved_sp = proc_sp;
     match gpi.cause {
-        GPCause::Read(_, _) => todo!("file read kernel excursion"),
+        GPCause::Read(fid, size) => {
+            // size safety is checked in syscall handler
+
+            if fid == 0 {
+                todo!("UART process input");
+            }
+
+            // we need to copy from file backing into the proc/file
+            // pair buffer.
+            let file_buf;
+            unsafe {
+                let file_pair = gpi.current_process.file_buffers
+                    .assume_init_ref().get(&fid)
+                    .unwrap();
+
+                file_buf = slice::from_raw_parts(file_pair.1.start() as *mut u8, size);
+            }
+
+            // now fill the buffer
+            todo!("This is where I would call the fs layer read. Consider slice vs explicit length + addr pair.");
+
+            // pass through info from fs layer
+            gpi.ret = todo!("Either num bytes or errno associated as result");
+
+            // back to the syscall handler
+            let base_addr = gpi.current_process.pgtbl.base as usize;
+            save_gp_info64(gpi);
+
+            extern "C" { pub fn kernel_space_to_proc_space(sp: usize, pgtbl: usize) -> !; }
+            unsafe {
+                kernel_space_to_proc_space(proc_sp, base_addr);
+            }
+
+        },
         GPCause::Write(fid, size) => {
-            assert!(fid == 1, "Currently hardwired uart out for processes");
-            let mut uart;
+
             let input_range;
             unsafe {
-                uart = uart::WRITER.lock();
-                let ppe = gpi.current_process.file_buffers
+                let ppe = &gpi.current_process.file_buffers
                     .assume_init_ref().get(&fid)
-                    .unwrap();  // handled earlier
+                    .unwrap().1;  // handled earlier
                 input_range = slice::from_raw_parts(ppe.start() as *mut u8, size)
             }
 
-            for c in input_range {
-                uart.put(c.clone());
-            }
+            if fid == 1 || fid == 2 {
+                // hardcoded uart for std out/err
+                let mut uart;
+                unsafe {
+                    uart = uart::WRITER.lock();
+                }
 
-            drop(uart);
+                if fid == 2 {
+                    print!("PROC {} ERR: ", gpi.current_process.id);
+                }
+
+                for c in input_range {
+                    uart.put(c.clone());
+                    // TODO can this fail?
+                }
+
+                drop(uart);
+            } else {
+                todo!("This is where I would do a fs layer write call from the input buffer");
+
+                gpi.ret = todo!("pass along info from fs layer, ret val or errno");
+            }
 
             let base_addr = gpi.current_process.pgtbl.base as usize;
             save_gp_info64(gpi);
@@ -66,10 +114,14 @@ pub extern "C" fn kernel_excursion_rust() -> ! {
 /// responsible for multiplexing into whatever call was actually
 /// issued.
 ///
+/// If you entered this function on the kernel stack/page table, when
+/// you are done here, you should use a process resume instead of
+/// returning from this function.
+///
 /// This may change in the future.
 #[no_mangle]
 pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
-                             a4: usize, a5: usize, a6: usize, a7: usize) {
+                             a4: usize, a5: usize, a6: usize, a7: usize) -> isize {
     match a7 {
         SCHED_YIELD => {
             // see the comment on scall_direct for why we have these
@@ -94,10 +146,6 @@ pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
             // a1: in/out buffer addr in the process
             // a2: number of bytes to read
 
-            if a2 > PAGE_SIZE {
-                todo!("Oversize syscall read")
-            }
-
             // see the comment on scall_direct for why we have these
             let proc_pc: usize;
             unsafe {
@@ -115,14 +163,34 @@ pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
 
             let buffer_range;
             unsafe {
-                let buf = proc.file_buffers.assume_init_ref().get(&a0)
-                    .expect("Read called on unknown fid");
+                let buf = &proc.file_buffers.assume_init_ref().get(&a0)
+                    .expect("Read called on unknown fid").1;
+
+                if buf.length() < a2 {
+                    todo!("Oversized file operation from process!");
+                }
+
                 buffer_range = slice::from_raw_parts_mut(buf.start() as *mut u8, a2);
             }
             match a7 {
-                READ => {
-                    todo!("populate the process file buffer according to fid");
+                READ => unsafe {
+                    gpi.cause = GPCause::Read(a0,a2);
+                    save_gp_info64(gpi);
+                    extern "C" { pub fn proc_space_to_kernel_space(); }
+                    proc_space_to_kernel_space();
+                    // this is a kernel excursion, see
+                    // trampoline.s and the function above
+                    gpi = restore_gp_info64();
 
+                    // the kernel has filled the given buffer
+                    // associated with the process/file pair, now copy
+                    // into the target buffer
+                    let target_range = slice::from_raw_parts_mut(a1 as *mut u8, a2);
+                    target_range.copy_from_slice(buffer_range);
+                    match gpi.ret {
+                        Ok(bytes) => bytes as isize,
+                        Err(errno) => -1,
+                    }
                 },
                 WRITE => unsafe {
                     let input_range = slice::from_raw_parts(a1 as *mut u8, a2);
@@ -135,9 +203,100 @@ pub extern "C" fn scall_rust(a0: usize, a1: usize, a2: usize, a3: usize,
                     proc_space_to_kernel_space();
                     // this is a kernel excursion, see
                     // trampoline.s and the function above
+                    gpi = restore_gp_info64();
+                    match gpi.ret {
+                        Ok(bytes) => bytes as isize,
+                        Err(errno) => -1,
+                    }
                 },
                 _ => panic!("Wrote to a7 in syscall handler")
             }
+        },
+        OPENAT => {
+            // a0 file desc (fid) of directory, or special AT_FDCWD (TODO), must be opened O_RDONLY or O_PATH
+            // a1 *const u8 to null terminated string path
+            // ^ if relative, relative to a0 dir, if absolute, a0 is ignored
+            // a2 is a bitfield of the flags
+            // a3 "mode" is listed in the man page? but not seemly used? Totally unclear
+            let proc_pc: usize;
+            let proc_sp: usize;
+            unsafe {
+                asm!(
+                    "mv {pc}, s2",
+                    "mv {sp}, s3",
+                    pc = out(reg) proc_pc,
+                    sp = out(reg) proc_sp
+                );
+            }
+
+            let gpi = restore_gp_info64();
+            let mut proc = gpi.current_process;
+
+            proc.saved_sp = proc_sp;
+            proc.saved_pc = proc_pc + 4;
+            proc.state = ProcessState::Ready;
+
+            unsafe {
+                assert!(*(a1 as *const u8) == '/' as u8, "Only abosolute paths are supported at this time");
+                assert!(a3 == 0, "Non zero mode on openat. What's the deal?");
+            }
+            let file: FileHandle = todo!("fs layer lookup with perms, catch errors for GP info here too");
+
+            let id = proc.file_id_gen.generate();
+            unsafe {
+                let fb = proc.file_buffers.assume_init_mut();
+                fb.insert(id, (Some(file), request_phys_page(1)
+                              .expect("Could not allocate file buffer for process")));
+            }
+            save_gp_info64(gpi);
+            proc.resume(Ok(id));
+        },
+        CLOSE => {
+            // a0 is file id
+            // should return 0 on success or appropriate errno with gpi scheme
+            let proc_pc: usize;
+            let proc_sp: usize;
+            unsafe {
+                asm!(
+                    "mv {pc}, s2",
+                    "mv {sp}, s3",
+                    pc = out(reg) proc_pc,
+                    sp = out(reg) proc_sp
+                );
+            }
+
+            let gpi = restore_gp_info64();
+            let mut proc = gpi.current_process;
+
+            proc.saved_sp = proc_sp; // not sure I need this
+            proc.saved_pc = proc_pc + 4;
+            proc.state = ProcessState::Ready;
+
+
+            let ret_val;
+            unsafe {
+                match proc.file_buffers.assume_init_mut().remove(&a0) {
+                    Some((fh, ppe)) => {
+                        match fh {
+                            Some(file) => {
+                                // we are actually closing a file properly
+                                let io_err = todo!("fs layer close call on file");
+                                // match on ^ and do errno stuff for io error
+
+                                drop(ppe); // return pages
+                                ret_val = Ok(0);
+                            },
+                            None => panic!("Tried to close a file without file backing. Did you close a pipe?"),
+                        }
+                    },
+                    None => {
+                        // wasn't an open fd
+                        ret_val = Err(todo!("errno for bad file desc"));
+                    },
+                }
+            }
+            save_gp_info64(gpi);
+            proc.resume(ret_val);
         },
         // -----------------------------------------------------------
         // Other
@@ -172,9 +331,13 @@ pub extern "C" fn scall_direct(a0: usize, a1: usize, a2: usize, a3: usize,
     match a7 {
         SCHED_YIELD => 1,
 
+        // File stuff
         READ => 0,
         WRITE => 0,
+        OPENAT => 1,
+        CLOSE => 1,
 
+        // other
         _ => {
             0
         }

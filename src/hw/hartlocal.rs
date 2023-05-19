@@ -14,10 +14,14 @@ pub enum GPCause {
     None,
 }
 
+// #[derive(PartialEq, Eq)]
+pub type GPRetVal = Result<usize, usize>; // success val or errno
+
 /// What do we need to restore when returning from a process
 pub struct GPInfo {
     pub current_process: Process,
     pub cause: GPCause,
+    pub ret: GPRetVal,
     // TODO consider moving the page table and the sp from the
     // sscratch stack to here
     //
@@ -27,10 +31,11 @@ pub struct GPInfo {
 }
 
 impl GPInfo {
-    pub fn new(current_process: Process, cause: GPCause) -> Self {
+    pub fn new(current_process: Process, cause: GPCause, ret: GPRetVal) -> Self {
         Self {
             current_process,
-            cause
+            cause,
+            ret,
         }
     }
 }
@@ -61,6 +66,7 @@ pub fn hartlocal_info_interrupt_stack_init() {
     let gpi = GPInfo {
         current_process: Process::new_uninit(),
         cause: GPCause::None,
+        ret: Ok(0)
     };
     save_gp_info64(gpi);
     unsafe {
