@@ -1,7 +1,6 @@
 # reedos
 
-You could say reed-oh-ESS, but we like to think it's barely FreeDOS minus the
-'f'. Like rEE-doss.
+You could say reed-oh-ESS, but we've been saying rEE-doss.
 
 See [Contribution Guidelines](CONTRIBUTING.md) if you're interested in getting
 involved.
